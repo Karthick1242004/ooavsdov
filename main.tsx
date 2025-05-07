@@ -55,7 +55,7 @@ function WorkspaceSkillCard({ skill, workspaceName }: WorkspaceSkillCardProps) {
   const CardContent = () => (
     <div className="relative">
       {isPending && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60 rounded-lg border border-blue-100">
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60 rounded-lg border border-blue-200">
           <span className="text-xs font-semibold text-[var(--workspace-color-highlight)] px-4 py-1 rounded-lg border border-[var(--workspace-color-highlight)] bg-white shadow">
             Checking skill status...
           </span>
@@ -84,7 +84,11 @@ function WorkspaceSkillCard({ skill, workspaceName }: WorkspaceSkillCardProps) {
                   </h3>
                 </div>
               </div>
-              <p className="text-[12px] text-gray-500">{localSkill.description}</p>
+              <p className="text-[12px] text-gray-500">
+                {localSkill.description && localSkill.description.length > 120
+                ? `${localSkill.description.substring(0,120)}...`
+              : localSkill.description}
+              </p>
               
               {isProcessSuccessful && (
                 <>
@@ -110,7 +114,7 @@ function WorkspaceSkillCard({ skill, workspaceName }: WorkspaceSkillCardProps) {
               )}
               
               {!isProcessSuccessful && (
-                <div className="mt-5 mr-10">
+                <div className="mt-2 mr-10">
                   {isProcessFailed ? (
                     <>
                       <button className="text-xs cursor-pointer">
@@ -127,7 +131,7 @@ function WorkspaceSkillCard({ skill, workspaceName }: WorkspaceSkillCardProps) {
                   ) : isProcessing ? (
                     <button className="text-xs cursor-pointer" onClick={handleCheckStatus}>
                       <span className="inline-block py-[2px] pb-[3px] px-2 text-[10px] rounded-sm bg-[var(--workspace-color-highlight)] text-white">
-                        {isPending ? "Checking..." : "Check skill status"}
+                        Check skill status
                       </span>
                     </button>
                   ) : (
