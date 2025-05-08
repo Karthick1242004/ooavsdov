@@ -1,296 +1,127 @@
-import React, { useEffect, useRef, useState } from "react";
-import { Sparkle, Copy, Pencil, ThumbsUp, ThumbsDown, RotateCcw, Check } from "lucide-react";
-import ChatMessage from "./ChatMessageModel";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { Button } from "@/components/ui/button";
+import React, { KeyboardEvent, useRef,useState } from 'react';
+import { Paperclip, ArrowUp } from 'lucide-react';
+import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog"
+import AI_BRAIN from "../assets/images/AI-brain.svg"
+import COPY_RIGHT from "../assets/images/copyright.svg"
+import GROUP from "../assets/images/Group.svg"
 
-interface ChatMessagesProps {
-    messages: ChatMessage[];
-    avatar?: string;
-    name?: string;
+
+interface MessageInputProps {
+  onSendMessage: (message: string) => void;
 }
 
-function ChatMessages({ messages, avatar, name }: ChatMessagesProps) {
-    const [copiedId, setCopiedId] = useState<number | null>(null);
-    const [editingId, setEditingId] = useState<number | null>(null);
-    const [editedText, setEditedText] = useState("");
-    const thinkingText = "Thinking...";
+export const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage }) => {
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [message, setMessage] = useState("");
 
 
 
-    const endOfMessagesRef = useRef<HTMLDivElement | null>(null);
 
-    const handleCopy = async (text: string, id: number) => {
-        try {
-            await navigator.clipboard.writeText(text);
-            setCopiedId(id);
-            setTimeout(() => setCopiedId(null), 1500); // Reset after 1.5s
-        } catch (err) {
-            console.error("Failed to copy text:", err);
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (message.trim()) {
+        onSendMessage(message.trim());
+        setMessage("");
+        if (textareaRef.current) {
+          textareaRef.current.style.height = "auto"; // ✅ Reset after sending
         }
-    };
+      }
+    }
+  };
 
-    const handleSave = (id: number) => {
-        // setMessages(prev =>
-        //   prev.map(msg =>
-        //     msg.id === id ? { ...msg, message: editedText } : msg
-        //   )
-        // );
-        setEditingId(null);
-        setEditedText("");
-    };
+  const handleSendClick = () => {
+    if (message.trim()) {
+      onSendMessage(message.trim());
+      setMessage("");
+      if (textareaRef.current) {
+        textareaRef.current.style.height = "auto"; // ✅ Reset after sending
+      }
+    }
+  };
 
-    const textareaRef = useRef<HTMLTextAreaElement>(null);
-    // Auto-adjust height on `editedText` change
-    useEffect(() => {
-        const textarea = textareaRef.current;
-        if (textarea) {
-            textarea.style.height = "auto";
-            textarea.style.height = `${Math.min(textarea.scrollHeight, 150)}px`;
-        }
-    }, [editedText]);
+  return (
+    <div>
+      <div className="border-[1.5px] border-[#FFC4D2] rounded-[10px] bg-white p-2 md:p-3 w-[50vw] flex flex-col items-center"
+        style={{
+          border: "1.5px solid transparent",
+          borderRadius: "8px",
+          backgroundImage: `
+                linear-gradient(white,white), 
+                linear-gradient(to right, #FFC4D2, #9AF6F4)
+              `,
+          backgroundOrigin: "border-box",
+          backgroundClip: "padding-box, border-box"
+        }}
+      >
+        <textarea
+          ref={textareaRef}
+          value={message}
+          onChange={(e) => {
+            setMessage(e.target.value);
+            e.target.style.height = "auto";
+            e.target.style.height = `${Math.min(e.target.scrollHeight, 150)}px`;
+          }}
+          onKeyDown={handleKeyDown}
+          placeholder="Ask a question..."
+          rows={1}
+          className="w-full p-2 text-sm bg-white focus:outline-none resize-none overflow-hidden scrollbar-hide"
+          style={{
 
-    useEffect(() => {
-        endOfMessagesRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, [messages]);
-    return (
-        <div className="flex-1 overflow-y-scroll max-h-[calc(85vh-10rem)]  scrollbar-hide px-38 2xl:px-100 mt-4">
-            <div className="flex flex-col gap-4 mx-auto">
-                {messages.map((msg) => (
-                    <div
-                        key={msg.id}
-                        className={`flex flex-1 gap-2 align-middle ${msg.role.toLowerCase() === "user" ? "justify-end" : "justify-start"
-                            }`}
-                    >
-                        {(msg.role.toLowerCase() === "msb_admin" || msg.role.toLowerCase() === "ai" || msg.role.toLowerCase() === "bot") && (
-                            <div className="rounded-full self-start text-white bg-[#1F36C7] p-2">
-                                <Sparkle size={20} />
+            maxHeight: "150px",
+            paddingTop: "0px",
+            paddingBottom: "10px",
+            overflowY: "scroll",
+          }}
+        ></textarea>
 
-                            </div>
-                        )}
-                        <div className="relative group max-w-[80%]">
-                            {editingId === msg.id ? (
-                                <div
-                                    className={`flex flex-col w-[42vw] gap-2 overflow-hidden bg-[#EDF0FF] border border-[#d0d8ff] rounded-lg transition-all duration-500 ease-in-out
-                                     ${editingId === msg.id ? "p-3 opacity-100" : "p-0 opacity-0"}
-                                   `}
-                                >
-                                    <textarea
-                                        ref={textareaRef}
-                                        value={editedText}
-                                        onChange={(e) => setEditedText(e.target.value)}
-                                        className="w-full text-xs p-2 border-none rounded-lg bg-[#EDF0FF] resize-none overflow-hidden focus:outline-none "
-                                        rows={1}
-                                        style={{
-                                            maxHeight: "150px",
-                                        }}
-                                    />
-                                    <div className="flex gap-2 justify-end ">
-                                        <Button
-                                            className="text-xs py-1 px-2 border border-[#D5D5D5] cursor-pointer"
-                                            onClick={() => {
-                                                setEditingId(null);
-                                                setEditedText("");
-                                            }}
-                                        >
-                                            Cancel
-                                        </Button>
-                                        <Button
-                                            className="text-xs p-0 px-2  bg-[#005EEE] text-white cursor-pointer"
-                                            onClick={() => handleSave(msg.id)}
-                                        >
-                                            Send
-                                        </Button>
-                                    </div>
-                                </div>
-                            ) : msg.isLoading ? (
-                                <>
-                                    <div
-                                        className="relative inline-block align-middle"
-                                        style={{
-                                            padding: 0,
-                                            margin: 0,
-                                        }}
-                                    >
-                                        {/* SVG background */}
-                                        <svg
-                                            aria-hidden
-                                            viewBox="0 0 100 32"
-                                            width="100%"
-                                            height="100%"
-                                            style={{
-                                                position: "absolute",
-                                                top: 0,
-                                                left: 0,
-                                                width: "100%",
-                                                height: "100%",
-                                                zIndex: 0,
-                                                pointerEvents: "none",
-                                            }}
-                                            preserveAspectRatio="none"
-                                        >
-                                            <rect x="0" y="0" width="100" height="32" rx="10" fill="transparent" />
-                                        </svg>
-
-                                        {/* Text above SVG */}
-                                        <div className="relative z-10 p-0 px-2 py-2">
-                                            <div className="flex  text-black text-xl tracking-[0.05rem] font-light ">
-                                                {thinkingText.split("").map((letter, i) => (
-                                                    <span
-                                                        key={i}
-                                                        className="animate-fade text-[12px] font-unilever"
-                                                        style={{
-                                                            animationDelay: `${i * 0.1}s`,
-                                                        }}
-                                                    >
-                                                        {letter}
-                                                    </span>
-                                                ))}
-                                            </div>
-                                        </div>
-
-                                        <style>{`
-                                                @keyframes fade {
-                                                0% { opacity: 1; }
-                                                100% { opacity: 0.2; }
-                                                }
-                                                .animate-fade {
-                                                animation: fade 0.6s infinite alternate;
-                                                display: inline-block;
-                                                }
-                                         `}</style>
-                                    </div></>
-                            ) : (
-                                <div
-                                    className={`border text-[12px] rounded-lg py-2 px-3 whitespace-pre-wrap break-words text-justify
-                                     ${msg.role.toLowerCase() === "user" ? "bg-[#e2e6ff] border-[#AFBAFF]" : "bg-[#ffffff] border-[#AFBAFF]"}
-                                     `}
-                                >
-                                    {msg.message}
-                                </div>
-                            )}
-
-                            {msg.role.toLowerCase() === "user" &&
-                                <div className="flex gap-2 mr-1 mt-2 justify-end">
-                                    {copiedId ? <Check
-                                        size={12}
-                                        className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer text-gray-500"
-                                        color="black"
-                                    /> :
-                                        <Tooltip>
-                                            <TooltipTrigger>
-                                                <Copy
-                                                    size={12}
-                                                    className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer text-gray-500"
-                                                    color="black"
-                                                    onClick={() => handleCopy(msg.message, msg.id)}
-                                                />
-                                            </TooltipTrigger>
-                                            <TooltipContent side="bottom" sideOffset={4} className="bg-white border-none">
-                                                <p>Copy</p>
-                                            </TooltipContent>
-                                        </Tooltip>
-                                    }
-                                    <Tooltip>
-                                        <TooltipTrigger>
-                                            <Pencil
-                                                size={12}
-                                                className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer text-gray-500"
-                                                color="black"
-                                                onClick={() => {
-                                                    setEditingId(msg.id);
-                                                    setEditedText(msg.message);
-                                                }}
-
-                                            />
-                                        </TooltipTrigger>
-                                        <TooltipContent side="bottom" sideOffset={4} className="bg-white border-none">
-                                            <p>Edit</p>
-                                        </TooltipContent>
-                                    </Tooltip>
-                                </div>
-                            }
-                            {(msg.role.toLowerCase() === "msb_admin" || msg.role.toLowerCase() === "ai" || msg.role.toLowerCase() === "bot") &&
-                                <div className="flex gap-2 mr-1 mt-2 ">
-                                    {copiedId ? <Check
-                                        size={12}
-                                        className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer text-gray-500"
-                                        color="black"
-                                    /> :
-                                        <Tooltip>
-                                            <TooltipTrigger>
-                                                <Copy
-                                                    size={12}
-                                                    className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer text-gray-500"
-                                                    color="black"
-                                                    onClick={() => handleCopy(msg.message, msg.id)}
-                                                />
-                                            </TooltipTrigger>
-                                            <TooltipContent side="bottom" sideOffset={4} className="bg-white border-none">
-                                                <p>Copy</p>
-                                            </TooltipContent>
-                                        </Tooltip>
-                                    }
-                                    <Tooltip>
-                                        <TooltipTrigger>
-                                            <ThumbsUp
-                                                size={12}
-                                                className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer text-gray-500"
-                                                color="black"
-                                            />
-                                        </TooltipTrigger>
-                                        <TooltipContent side="bottom" sideOffset={4} className="bg-white border-none">
-                                            <p>Good Response</p>
-                                        </TooltipContent>
-                                    </Tooltip>
-                                    <Tooltip>
-                                        <TooltipTrigger>
-                                            <ThumbsDown
-                                                size={12}
-                                                className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer text-gray-500"
-                                                color="black"
-                                            />
-                                        </TooltipTrigger>
-                                        <TooltipContent side="bottom" sideOffset={4} className="bg-white border-none">
-                                            <p>Bad Response</p>
-                                        </TooltipContent>
-                                    </Tooltip>
-
-                                    <Tooltip>
-                                        <TooltipTrigger>
-                                            <RotateCcw
-                                                size={12}
-                                                className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer text-gray-500"
-                                                color="black"
-                                            />
-                                        </TooltipTrigger>
-                                        <TooltipContent side="bottom" sideOffset={4} className="bg-white border-none">
-                                            <p>Regenerate Response</p>
-                                        </TooltipContent>
-                                    </Tooltip>
-
-                                </div>
-                            }
-                        </div>
-
-                        {msg.role.toLowerCase() === "user" && (
-                            avatar ? (
-                                <img
-                                    src={avatar}
-                                    alt="User"
-                                    className="w-[35px] h-[35px] rounded-full"
-                                />
-                            ) : (
-                                <div className="w-[35px] h-[35px] flex items-center justify-center bg-gray-300 text-white font-bold rounded-full">
-                                    {name?.charAt(0).toUpperCase()}
-                                </div>
-                            )
-                        )}
-                    </div>
-                ))}
-            </div>
-            <div ref={endOfMessagesRef} />
+        <div className="flex justify-between items-center w-full mt-0.5">
+          <div className="flex items-center gap-2">
+            <button className="p-1 md:p-2 text-gray-500 hover:text-gray-700">
+              <Paperclip size={16} />
+            </button>
+          </div>
+          <button
+            className={` md:p-2 ${message.trim() ? 'bg-[#1F36C7] text-white' : 'bg-blue-300 text-white cursor-not-allowed'} rounded-md transition duration-200`}
+            onClick={handleSendClick}
+            disabled={!message.trim()}
+          >
+            <ArrowUp size={12} />
+          </button>
         </div>
-    );
-}
-export default ChatMessages;
+      </div>
+      <p className="text-[10px] md:text-xs pb-2 pt-2 text-gray-500  text-center lg:text-end w-full md:w-[500px]">  Please use with discretion and follow &nbsp;
+        <Dialog>
+          <DialogTrigger asChild>
+            <span className='underline cursor-pointer'>usage terms</span>
+
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[35%] bg-white font-normal">
+            <p className="flex justify-center text-[18px] font-medium bg-gradient-to-t from-[#1F36C7] to-[#697DFF] bg-clip-text text-transparent ">Usage terms</p>
+            <hr style={{ border: '0.1px solid #DCDCDC' }} className='my-1' />
+            <p className='font-medium'>Points to remember when using the tool:</p>
+            <div className='mt-2'>
+              <div className='flex gap-2 mb-2'>
+                <img src={AI_BRAIN} alt="AI Brain" className='w-[25px] h-[25px] mt-2' />
+                <p className='text-[12px]'> Inputs may <span className='font-medium'>not be fully up to date</span> and the tool might <span className='font-medium'>'hallucinate'</span> facts or even sources, so independently fact-check Outputs.</p>
+              </div >
+              <div className='flex gap-2 mb-2'>
+                <img src={COPY_RIGHT} alt="Copyright" className='w-[25px] h-[25px] mt-2' />
+                <p className='text-[12px]'>Outputs may be subject to third party rights (such as copyright), meaning that you should <span className='font-medium'>use the Output as stimulus only.</span> use the Output as stimulus only.</p>
+              </div>
+              <div className='flex gap-2 mb-2'>
+                <img src={GROUP} alt="Group" className='w-[25px] h-[25px] mt-2' />
+                <p className='text-[12px]'><span className='font-medium'>Do not prompt</span> the tool with <span className='underline text-[#697DFF] font-medium'>Personal Data</span> (e.g. a photo, name, email address etc of a living person) or <span className='font-medium'>third-party data/materials</span> (e.g. data we licence from our insight providers like Euromonitor, Kantar, retailer media partners, etc.).</p>
+              </div>
+            </div>
+            <div className='bg-[#F3F8FF] p-3'>
+              <p className='font-medium text-xs'>Need Help?</p>
+              <p className='text-[12px]'>Contact your local Data <span className='underline text-[#697DFF]'>Protection Officer</span> / <span className='underline text-[#697DFF]'>legal business</span>  partner if your use case involves doing any of the above.</p>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </p>
+
+    </div>
+  );
+};
