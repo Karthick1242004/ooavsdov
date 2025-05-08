@@ -8,6 +8,35 @@ import "@uppy/drag-drop/dist/style.css";
 import { FormConfigs, formConfigs, SkillFormData } from "./formtypes";
 import { ModalForm } from "./components/ModalForm";
 import { RegularForm } from "./components/RegularForm";
+import { Skeleton } from "@/components/ui/skeleton";
+
+interface SkillAttachment {
+  id: number;
+  name: string;
+  source_type: string;
+  path_url: string;
+  source_info: string;
+  uploaded_by_id: number;
+  uploaded_at: string;
+}
+
+interface SkillResponse {
+  data: {
+    id: number;
+    name: string;
+    description: string;
+    workspace_id: number;
+    system_prompt: string;
+    is_processed_for_rag: boolean;
+    processing_status: string;
+    logo_path: string;
+    created_by_id: number;
+    created_at: string;
+    updated_at: string;
+    attachments: SkillAttachment[];
+  };
+  message: string;
+}
 
 interface FormProps {
   type: keyof FormConfigs;
@@ -26,6 +55,8 @@ export function UnifiedForm({ type, isModal = false, isOpen, onClose, workspaceI
   const [error, setError] = useState<string | null>(null);
   const [item, setItem] = useState<any>(location.state?.[type] || null);
   const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [skillData, setSkillData] = useState<SkillResponse["data"] | null>(null);
 
   const config = formConfigs[type];
   const formMethods = useForm({
@@ -46,6 +77,49 @@ export function UnifiedForm({ type, isModal = false, isOpen, onClose, workspaceI
   const shouldShowFileUploader = type === 'skill' && dataSourceType === 'File upload';
   const shouldShowSharePointInput = type === 'skill' && dataSourceType === 'Sharepoint URL';
   const shouldShowPublicURLInput = type === 'skill' && dataSourceType === 'Public URL';
+
+  // Fetch skill data when editing a skill
+  useEffect(() => {
+    const fetchSkillData = async () => {
+      if (type === 'skill' && id && !isModal) {
+        try {
+          setIsLoading(true);
+          const response = await fetch(`${baseURL}/skills/${id}`);
+          
+          if (!response.ok) {
+            throw new Error('Failed to fetch skill data');
+          }
+          
+          const responseData: SkillResponse = await response.json();
+          setSkillData(responseData.data);
+          
+          // Populate form fields with the response data
+          setValue('name', responseData.data.name);
+          setValue('description', responseData.data.description);
+          setValue('systemPrompt', responseData.data.system_prompt);
+          
+          // For data source type, determine based on attachments
+          if (responseData.data.attachments && responseData.data.attachments.length > 0) {
+            if (responseData.data.attachments[0].source_type === 'ADLS') {
+              setValue('category', 'File upload');
+            } else if (responseData.data.attachments[0].source_type === 'sharePoint') {
+              setValue('category', 'Sharepoint URL');
+            } else if (responseData.data.attachments[0].source_type === 'URL') {
+              setValue('category', 'Public URL');
+            }
+          }
+          
+        } catch (error) {
+          console.error('Error fetching skill data:', error);
+          setError(error instanceof Error ? error.message : 'Failed to fetch skill data');
+        } finally {
+          setIsLoading(false);
+        }
+      }
+    };
+    
+    fetchSkillData();
+  }, [id, type, isModal, setValue]);
 
   useEffect(() => {
     if (item) {
@@ -150,7 +224,7 @@ export function UnifiedForm({ type, isModal = false, isOpen, onClose, workspaceI
   };
 
   if (isModal && !isOpen) return null;
-  if (!isModal && !item) return null;
+  if (!isModal && !item && !skillData && type !== 'skill') return null;
   
   const generateSystemPrompt = async () => {
     try {
@@ -184,6 +258,46 @@ export function UnifiedForm({ type, isModal = false, isOpen, onClose, workspaceI
     }
   };
 
+  if (isLoading) {
+    return (
+      <div className="font-unilever h-[var(--edit-content-height)] bg-[#F4FAFC] shadow-lg overflow-y-auto mt-2 rounded-xl w-full p-5">
+        <div className="space-y-4">
+          <Skeleton className="h-8 w-[250px]" /> {/* Back button & title */}
+          <div className="flex justify-between">
+            <Skeleton className="h-10 w-[220px]" /> {/* Title */}
+            <Skeleton className="h-10 w-[180px]" /> {/* Action buttons */}
+          </div>
+          
+          {/* Form fields */}
+          <Skeleton className="h-5 w-[100px] mt-6" /> {/* Label */}
+          <Skeleton className="h-10 w-full" /> {/* Input field */}
+          
+          <Skeleton className="h-5 w-[100px] mt-4" /> {/* Label */}
+          <Skeleton className="h-24 w-full" /> {/* Textarea */}
+          
+          <Skeleton className="h-5 w-[100px] mt-4" /> {/* Label */}
+          <Skeleton className="h-24 w-full" /> {/* Textarea */}
+          
+          {/* File uploaders */}
+          <div className="flex flex-row gap-4 mt-6">
+            <div className="flex-1">
+              <Skeleton className="h-5 w-[100px] mb-2" /> {/* Label */}
+              <Skeleton className="h-[120px] w-full" /> {/* Uploader */}
+            </div>
+            <div className="flex-1">
+              <Skeleton className="h-5 w-[100px] mb-2" /> {/* Label */}
+              <Skeleton className="h-[120px] w-full" /> {/* Uploader */}
+            </div>
+          </div>
+          
+          {/* Uploaded files section */}
+          <Skeleton className="h-5 w-[120px] mt-6" /> {/* Uploaded files label */}
+          <Skeleton className="h-[150px] w-full rounded-md" /> {/* Table */}
+        </div>
+      </div>
+    );
+  }
+
   if (isModal) {
     return (
       <ModalForm
@@ -216,6 +330,7 @@ export function UnifiedForm({ type, isModal = false, isOpen, onClose, workspaceI
       generateSystemPrompt={generateSystemPrompt}
       skillName={skillName}
       skillDescription={skillDescription}
+      skillData={skillData}
     />
   );
 }
