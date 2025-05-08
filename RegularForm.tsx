@@ -1,10 +1,12 @@
-import React from "react";
+import React, { useState } from "react";
 import { Pencil, Trash2, Save, CircleArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FormConfig } from "../formtypes";
 import { FormFieldWithLabel } from "./FormField";
 import { UseFormReturn } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
+import axiosInstance from "@/utils/axiosInstance";
 
 interface SkillAttachment {
   id: number;
@@ -49,7 +51,7 @@ export const RegularForm: React.FC<RegularFormProps> = ({
   id,
   config,
   formMethods,
-  onSubmit,
+  onSubmit: originalOnSubmit,
   isGeneratingPrompt,
   generateSystemPrompt,
   skillName,
@@ -57,12 +59,101 @@ export const RegularForm: React.FC<RegularFormProps> = ({
   skillData,
 }) => {
   const navigate = useNavigate();
-  const { control, handleSubmit, formState: { errors } } = formMethods;
+  const queryClient = useQueryClient();
+  const { control, handleSubmit, formState: { errors }, getValues } = formMethods;
   const showUploadedFiles = type === "skill" && id;
+  const [localSkillData, setLocalSkillData] = useState<SkillData | null>(skillData || null);
+  
+  React.useEffect(() => {
+    if (skillData) {
+      setLocalSkillData(skillData);
+    }
+  }, [skillData]);
+
+  const handleDeleteFile = async (fileId: number) => {
+    if (!id || !localSkillData) return;
+    const updatedAttachments = localSkillData.attachments.filter(
+      attachment => attachment.id !== fileId
+    );
+    
+    const formData = new FormData();
+    formData.append('payload', JSON.stringify({
+      files_to_delete: [fileId.toString()]
+    }));
+    try {
+      const response = await axiosInstance({
+        url: `skills/edit-skill/${id}?user_id=1`,
+        method: 'POST',
+        data: formData,
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      
+      if (response.data && response.data.data) {
+        setLocalSkillData(response.data.data);
+      }
+      queryClient.invalidateQueries({ queryKey: ["workspace"] });
+    } catch (error) {
+      console.error('Error deleting file:', error);
+    }
+    setLocalSkillData({
+      ...localSkillData,
+      attachments: updatedAttachments
+    });
+  };
+  
+  const handleFormSubmit = async (data: any) => {
+    if (type === 'skill' && id) {
+      const formData = new FormData();
+      const skillDetails = {
+        skillName: data.name,
+        description: data.description,
+        systemPrompt: data.systemPrompt || "",
+        files_to_delete: []
+      };
+      formData.append('payload', JSON.stringify(skillDetails));
+
+      const fileInputs = document.querySelectorAll('input[name="fileInput"]');
+      if (fileInputs && fileInputs.length > 0) {
+        const fileInput = fileInputs[0] as HTMLInputElement;
+        if (fileInput.files && fileInput.files.length > 0) {
+          for (let i = 0; i < fileInput.files.length; i++) {
+            formData.append("files", fileInput.files[i]);
+          }
+        }
+      }
+      
+      const logoInputs = document.querySelectorAll('input[name="logoFile"]');
+      if (logoInputs && logoInputs.length > 0) {
+        const logoInput = logoInputs[0] as HTMLInputElement;
+        if (logoInput.files && logoInput.files.length > 0) {
+          formData.append("logoFile", logoInput.files[0]);
+        }
+      }
+      
+      try {
+        const response = await axiosInstance({
+          url: `skills/edit-skill/${id}?user_id=1`,  
+          method: 'POST',
+          data: formData,
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        if (response.data && response.data.data) {
+          setLocalSkillData(response.data.data);
+        }
+        queryClient.invalidateQueries({ queryKey: ["workspace"] });
+      } catch (error) {
+        console.error('Error updating skill:', error);
+      }
+    } else {
+      originalOnSubmit(data);
+    }
+  };
+  
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear()}`;
   };
+  
   const getFileType = (fileName: string) => {
     const extension = fileName.split('.').pop()?.toLowerCase();
     switch(extension) {
@@ -84,7 +175,7 @@ export const RegularForm: React.FC<RegularFormProps> = ({
     }
   };
   
-  const hasAttachments = skillData?.attachments && skillData.attachments.length > 0;
+  const hasAttachments = localSkillData?.attachments && localSkillData.attachments.length > 0;
   
   return (
     <div className="font-unilever h-[var(--edit-content-height)] bg-[#F4FAFC] shadow-lg overflow-y-auto mt-2 rounded-xl w-full">
@@ -99,7 +190,7 @@ export const RegularForm: React.FC<RegularFormProps> = ({
           Back
         </Button>
         
-        <form onSubmit={handleSubmit(onSubmit)}>
+        <form onSubmit={handleSubmit(handleFormSubmit)}>
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center space-x-4">
               <h1 className="text-md font-unilever-medium flex items-center">
@@ -126,7 +217,6 @@ export const RegularForm: React.FC<RegularFormProps> = ({
               </Button>
             </div>
           </div>
-
           <div className="space-y-4">
             {type === 'skill' ? (
               <>
@@ -190,7 +280,7 @@ export const RegularForm: React.FC<RegularFormProps> = ({
                               </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
-                              {skillData?.attachments.map((file) => (
+                              {localSkillData?.attachments.map((file) => (
                                 <tr key={file.id} className="group bg-[#f6f8ff]">
                                   <td className="px-4 py-2 whitespace-nowrap text-xs text-gray-600">
                                     {formatDate(file.uploaded_at)}
@@ -204,7 +294,13 @@ export const RegularForm: React.FC<RegularFormProps> = ({
                                     </a>
                                   </td>
                                   <td className="px-4 py-3 whitespace-nowrap text-sm">
-                                    <Trash2 className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer" />
+                                    <button 
+                                      type="button"
+                                      onClick={() => handleDeleteFile(file.id)}
+                                      className="disabled:opacity-50"
+                                    >
+                                      <Trash2 className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-red-500" />
+                                    </button>
                                   </td>
                                 </tr>
                               ))}
