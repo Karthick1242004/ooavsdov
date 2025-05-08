@@ -1,285 +1,49 @@
-import React, { useState, useEffect } from "react";
-import { MessageInput } from "@/shared/MessageInput";
-import { useFetchHandler } from "@/@logic/getHandlers";
-import { useParams } from "react-router-dom";
-import { useWorkspaceStore, Workspace } from "@/@logic/workspaceStore";
-import { modelList } from "@/constant/models";
-import { rolePlay } from "@/constant/role-play";
-import { useMutateHandler } from "@/@logic/mutateHandlers";
-import { HTTPMethod } from "@/@logic";
-import { useQueryClient } from "@tanstack/react-query";
-import { useSearchParams } from "react-router-dom";
-import DropdownSelect from "@/shared/chatdropDown";
-import ChatMessages from "./ChatMessages";
-import NewChatSuggestion from "./NewChatSuggestion";
-import ChatMessage from "./ChatMessageModel";
-import { useMsal } from '@azure/msal-react';
-import { getUserProfile } from '@/utils/getUserProfile';
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { useNavigate } from "react-router-dom";
+import { Button } from '@/components/ui/button'
+import React from 'react'
+import GradientStrokeText from './GradientText'
 
-interface ChatResponse {
-  data: {
-    chat_id: number;
-    user_message_id: number;
-    ai_message_id: number;
-    ai_response: string | string[];
-  };
+interface NewChatSuggestionProps {
+  name?: string;
+  onSendMessage: (message: string) => void;
 }
 
-function Chat() {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const queryClient = useQueryClient();
-  const { chatId } = useParams();
-  const [searchParams] = useSearchParams();
-  const workspaceName = searchParams.get("workspaceName");
-  const skillName = searchParams.get("skillName");
-  const workspaces = useWorkspaceStore((state) => state.workspaces);
-  const [selectedWorkspace, setSelectedWorkspace] = useState(workspaceName || ""); // Default to workspaceName from params
-  const [selectedSkill, setSelectedSkill] = useState(skillName || ""); // Default to skillName from params
-  const [models, setModels] = useState(modelList[0]);
-  const [selectedRole, setSelectedRole] = useState(rolePlay[0]);
-  const [isNewChat, setIsNewChat] = useState(true);
-  // const { accounts } = useMsal();
-  const navigate = useNavigate();
-  const [avatar, setAvatar] = useState<string>();
+export default function NewChatSuggestion({
+  name,
+  onSendMessage,
+}: NewChatSuggestionProps) {
 
-  const { data: chat, isLoading } = useFetchHandler(
-    chatId ? `chats/?userId=1&chatId=${chatId}` : "", // Empty URL when chatId is undefined
-    chatId ? `chat-${chatId}` : "" // Empty key when chatId is undefined
-  );
-
-  // const userProfile = async () => {
-  //   if (accounts.length > 0) {
-  //     const userProfile = await getUserProfile(accounts[0]);
-  //     setAvatar(userProfile);
-  //   }
-  // }
-  // useEffect(() => {
-  //   userProfile();
-  // }, [accounts]);
-
-
-  const addChat = useMutateHandler({
-    endUrl: "chats/?userId=1",
-    method: HTTPMethod.POST,
-    onSuccess: (response: ChatResponse) => {
-      queryClient.invalidateQueries({ queryKey: ['recent'] });
-      navigate(`/chat/${response.data.chat_id}`);
-      setIsNewChat(false);
-
-      const botResponse: ChatMessage = {
-        id: response.data.ai_message_id,
-        message:Array.isArray(response.data.ai_response)
-        ? response.data.ai_response[0]
-        :response.data.ai_response ,
-        role: "MSB_Admin",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        chat_id: response.data.chat_id,
-      };
-      setMessages(prev => [...prev.filter(msg => !msg.isLoading), botResponse]);
-    },
-  });
-
-  const existingChatMutation = useMutateHandler({
-    endUrl: "chats/?userId=1",
-    method: HTTPMethod.POST,
-    onSuccess: (response: ChatResponse) => {
-      const botResponse: ChatMessage = {
-        id: response.data.ai_message_id,
-        message:Array.isArray(response.data.ai_response)
-        ? response.data.ai_response[0]
-        :response.data.ai_response ,
-        role: "MSB_Admin",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        chat_id: Number(chatId),
-      };
-      setMessages(prev => [...prev.filter(msg => !msg.isLoading), botResponse]);
-    },
-  });
-
-  const onSendMessage = (messageToSend: string) => {
-    if (!messageToSend.trim()) return;
-
-    const newUserMessage: ChatMessage = {
-      id: Date.now(),
-      message: messageToSend,
-      role: "USER",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      chat_id: Number(chatId) || 0,
-    };
-    const loadingMessage: ChatMessage = {
-      id: Date.now()+1,
-      message: "",
-      role: "MSB_Admin",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      chat_id: Number(chatId) || 0,
-      isLoading:true,
-    };
-    setMessages(prev => [...prev, newUserMessage,loadingMessage]);
-
-    const skillId =
-      workspaces?.find(item => item.name === selectedWorkspace)
-        ?.skills?.find(skill => skill.name === selectedSkill)?.id || 0;
-
-    const payload = {
-      userMessage: messageToSend,
-      skillId,
-      isNewChat,
-    };
-
-    if (!chatId) {
-      addChat.mutate(payload);
-    } else {
-      existingChatMutation.mutate({
-        ...payload,
-        chatId: Number(chatId),
-        isNewChat: false,
-      });
-    }
-
-
+  // Reusable handler
+  const handleQuickMessage = (quickMsg: string) => {
+    const trimmedMessage = quickMsg.trim();
+    onSendMessage(trimmedMessage);
   };
-
-  function handleWorkspaceChange(value: string) {
-    setSelectedWorkspace(value);
-    setSelectedSkill(
-      workspaces
-        .filter((item: Workspace) => item.name === value)[0]
-        .skills.map((item) => item.name)[0]
-    );
-  }
-
-  const showWelcome = !chatId && messages.length === 0;
-
-  useEffect(() => {
-    if (chatId && chat) {
-      setSelectedWorkspace(chat?.workspace.name);
-      setSelectedSkill(chat?.skill.name);
-      setMessages(chat?.messages || []);
-      // setChatTitle(` ${chat?.chat.title}`);
-    } else if (!workspaceName && workspaces?.length > 0) {
-      setSelectedWorkspace(workspaces?.[0].name);
-      setSelectedSkill(workspaces?.[0].skills[0].name);
-      setMessages([]);
-      // setChatTitle("New Chat");
-    }
-    if (chatId) {
-      setIsNewChat(false);
-    }
-    else {
-      setIsNewChat(true);
-    }
-  }, [chatId, chat, workspaceName, workspaces.length]);
 
   return (
-    <div
-      className="w-[100vw] font-unilever"
-      style={{ maxHeight: `calc(100vh - var(--navbar-height))` }}
-    >
-      {isLoading && chatId ? (
-        <div className="flex justify-center items-center h-full">
-          <p>Loading chat...</p>
-        </div>
-      ) : (
-        <div className="flex-1 flex flex-col">
-          <div className="flex items-center  mt-2 w-full">
-            <div className="mx-auto flex">
-              <Tooltip>
-                <TooltipTrigger>
-                  <DropdownSelect
-                    title='Select workspace'
-                    items={workspaces?.map((item) => item.name) || []}
-                    searchPlaceholder="Search"
-                    groupTitle="Recent Workspaces"
-                    defaultValue={selectedWorkspace}
-                    onValueChange={handleWorkspaceChange}
-                  />
-                </TooltipTrigger>
-                <TooltipContent side="bottom" sideOffset={4} disableArrow>
-                  <p>Workspace</p>
-                </TooltipContent>
-              </Tooltip>
-              <div className="flex px-2 text-gray-500">/</div>
-              <Tooltip>
-                <TooltipTrigger>
-                  <DropdownSelect
-                    title="Select Skill"
-                    items={
-                      workspaces?.find((item: Workspace) => item.name === selectedWorkspace)?.skills.map((item) => item.name) || []
-                    }
-                    searchPlaceholder="Search"
-                    groupTitle={`Skill for ${selectedWorkspace}`}
-                    defaultValue={selectedSkill}
-                    onValueChange={(value) => setSelectedSkill(value)}
-                  />
-                </TooltipTrigger>
-                <TooltipContent side="bottom" sideOffset={4} disableArrow>
-                  <p>Skill</p>
-                </TooltipContent>
-              </Tooltip>
-              <div className="flex px-2 text-gray-500">/</div>
-              <Tooltip>
-                <TooltipTrigger>
-                  <div className="text-[12px] font-medium bg-gradient-to-t from-[#1F36C7] to-[#697DFF] bg-clip-text text-transparent">{chatId ? chat?.chat.title : 'New Chat'}</div>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" sideOffset={4} disableArrow>
-                  <p>Chat</p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-            <div className="flex gap-2 md:flex-col lg:flex-row">
-              <Tooltip>
-                <TooltipTrigger>
-                  <DropdownSelect
-                    title="Select Role"
-                    items={rolePlay}
-                    searchPlaceholder="Search"
-                    groupTitle={`Role Play`}
-                    defaultValue={selectedRole}
-                    onValueChange={(value) => setSelectedRole(value)}
-                  />
-                </TooltipTrigger>
-                <TooltipContent side="bottom" sideOffset={4} disableArrow>
-                  <p>Persona</p>
-                </TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger>
-                  <DropdownSelect
-                    title="Select Model"
-                    items={modelList}
-                    searchPlaceholder="Search"
-                    groupTitle={`Model`}
-                    defaultValue={models}
-                    onValueChange={(value) => setModels(value)}
-                  />
-                </TooltipTrigger>
-                <TooltipContent side="bottom" sideOffset={4} disableArrow>
-                  <p>Model</p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-          </div>
-          {showWelcome ? (
-            <div className="flex justify-center items-center h-[calc(80vh-var(--navbar-height))] w-full">
-              <NewChatSuggestion name={'Steve'}  onSendMessage={onSendMessage} />
-            </div>) : (
-            <ChatMessages messages={messages} avatar={avatar} name={'Steve'} />
-          )}
+    <>
+      <div className="flex flex-col items-center justify-center p-8 w-full h-full">
+        <GradientStrokeText text={`Hello ${name}`} />
+        <p className="text-gray-600 mb-8 font-unilever text-xs">
+          Tap into the expertise of{" "}
+          <span className="font-unilever-medium">France market 2024 Skill</span>, ask your questions!
+        </p>
 
-          <div className="fixed bottom-0 left-32 w-full pl-2  flex justify-center items-end z-50">
-            <MessageInput
-              onSendMessage={onSendMessage}
-            />
-          </div>
+        <div className="flex gap-4 flex-wrap justify-center mt-[-1%]">
+          {[
+            "What are the sales figures for January?",
+            "Create an average report for 2024",
+            "What are the average sales figures for 2024?"
+          ].map((text, idx) => (
+            <Button
+              key={idx}
+              variant="outline"
+              className="text-xs rounded-[5px] px-3 border border-gray-200 bg-[#FBF6F8] py-3 font-unilever cursor-pointer"
+              onClick={() => handleQuickMessage(text)}
+            >
+              {text}
+            </Button>
+          ))}
         </div>
-      )}
-    </div>
+      </div>
+    </>
   );
 }
-export default Chat;
