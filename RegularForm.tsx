@@ -76,21 +76,27 @@ export const RegularForm: React.FC<RegularFormProps> = ({
           <div className="space-y-2">
             {type === 'skill' ? (
               <>
-                {config.fields.filter(field => field.type !== 'uploader').map((field) => (
-                  <FormFieldWithLabel
-                    key={field.name}
-                    field={field}
-                    control={control}
-                    errors={errors}
-                    isModal={false}
-                    type={type}
-                    id={id}
-                    skillName={skillName}
-                    skillDescription={skillDescription}
-                    isGeneratingPrompt={isGeneratingPrompt}
-                    generateSystemPrompt={generateSystemPrompt}
-                  />
-                ))}
+                {config.fields
+                  .filter(field => 
+                    field.type !== 'uploader' && 
+                    !(id && field.name === 'category')
+                  )
+                  .map((field) => (
+                    <FormFieldWithLabel
+                      key={field.name}
+                      field={field}
+                      control={control}
+                      errors={errors}
+                      isModal={false}
+                      type={type}
+                      id={id}
+                      skillName={skillName}
+                      skillDescription={skillDescription}
+                      isGeneratingPrompt={isGeneratingPrompt}
+                      generateSystemPrompt={generateSystemPrompt}
+                    />
+                  ))
+                }
               
                 <div className="flex flex-row gap-4 mt-4">
                   {config.fields.filter(field => field.type === 'uploader').map((field) => (
