@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { ChartLine, PencilLine } from "lucide-react";
+import { ChartLine, PencilLine, UserRound } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Skill as StoreSkill } from '@/@logic/workspaceStore';
 import { useFetchHandler } from '@/@logic/getHandlers';
 import { useNavigation } from '@/hooks/navigationHook';
+import Dot from '@/shared/dot/dot';
 
 type Skill = StoreSkill;
 
@@ -16,11 +17,10 @@ function WorkspaceSkillCard({ skill, workspaceName }: WorkspaceSkillCardProps) {
   const { navigateTo } = useNavigation();
   const [localSkill, setLocalSkill] = useState<Skill>(skill);
   const [shouldFetch, setShouldFetch] = useState(false);
-
   const isProcessSuccessful = localSkill.processing_status === "Completed" && localSkill.is_processed_for_rag;
   const isProcessFailed = localSkill.processing_status === "Failed";
   const isProcessing = localSkill.processing_status === "Pending" || localSkill.processing_status === "Inprogress";
-  
+
   const handleEditClick = (e: React.MouseEvent, skill: Skill) => {
     e.preventDefault();
     const workspaceId = skill.workspace?.toString() || "";
@@ -63,33 +63,45 @@ function WorkspaceSkillCard({ skill, workspaceName }: WorkspaceSkillCardProps) {
       )}
       <div className={isPending ? "blur-xs opacity-100 pointer-events-none select-none" : ""}>
         <div
-          className={`group relative transition-all min-h-[120px] duration-300 border ${
-            isProcessFailed
+          className={`group relative transition-all min-h-[120px] duration-300 border ${isProcessFailed
               ? "bg-red-50 border-red-200"
               : "bg-[#F4F8FF] border-[#CBE0FF]"
-          } rounded-lg p-4`}
+            } rounded-lg p-4`}
         >
           <div className="flex flex-row gap-2 items-center justify-between">
             <div className="flex flex-col w-full">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <h3
-                    className={`font-semibold text-sm font-unilever-medium ${
-                      isProcessFailed
+                    className={`font-semibold text-sm font-unilever-medium ${isProcessFailed
                         ? "text-black"
                         : "text-[var(--workspace-color-highlight)]"
-                    }`}
+                      }`}
                   >
                     {localSkill.name}
                   </h3>
                 </div>
               </div>
+              {isProcessSuccessful ?
+                <>
+                <div className="flex items-center gap-2 mb-3">
+                  <div
+                    className="flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-[var(--workspace-color-bg-light)] text-[var(--workspace-color-highlight)]">
+                    <UserRound size={14} />
+                    Clara
+                  </div>
+                  <div
+                    className="flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-[var(--workspace-color-bg-light)] text-[var(--workspace-color-highlight)]">
+                    <Dot bgcolor='bg-[var(--workspace-color-highlight)]' />
+                    15 Skills
+                  </div>
+                </div></>:null }
               <p className="text-[12px] text-gray-500">
                 {localSkill.description && localSkill.description.length > 120
-                ? `${localSkill.description.substring(0,120)}...`
-              : localSkill.description}
+                  ? `${localSkill.description.substring(0, 120)}...`
+                  : localSkill.description}
               </p>
-              
+
               {isProcessSuccessful && (
                 <>
                   <button
@@ -112,13 +124,13 @@ function WorkspaceSkillCard({ skill, workspaceName }: WorkspaceSkillCardProps) {
                   </button>
                 </>
               )}
-              
+
               {!isProcessSuccessful && (
                 <div className="mt-2 mr-10">
                   {isProcessFailed ? (
                     <>
                       <button className="text-xs cursor-pointer">
-                        <span className="inline-block py-[2px] pb-[3px] px-2 text-[10px] rounded-sm bg-red-400 text-white">
+                        <span className="inline-block py-1 px-2 text-[10px] rounded-sm bg-red-400 text-white">
                           Delete Skill
                         </span>
                       </button>
@@ -130,14 +142,14 @@ function WorkspaceSkillCard({ skill, workspaceName }: WorkspaceSkillCardProps) {
                     </>
                   ) : isProcessing ? (
                     <button className="text-xs cursor-pointer" onClick={handleCheckStatus}>
-                      <span className="inline-block py-[2px] pb-[3px] px-2 text-[10px] rounded-sm bg-[var(--workspace-color-highlight)] text-white">
+                      <span className="inline-block py-1 px-2 text-[10px] rounded-sm bg-[var(--workspace-color-highlight)] text-white">
                         Check skill status
                       </span>
                     </button>
                   ) : (
                     <button className="text-xs cursor-pointer">
-                      <span className="inline-block py-[2px] pb-[3px] px-2 text-[10px] rounded-sm bg-[var(--workspace-color-highlight)] text-white">
-                      Check skill status
+                      <span className="inline-block py-1 px-2 text-[10px] rounded-sm bg-[var(--workspace-color-highlight)] text-white">
+                        Check skill status
                       </span>
                     </button>
                   )}
