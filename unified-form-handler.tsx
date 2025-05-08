@@ -8,7 +8,7 @@ import "@uppy/drag-drop/dist/style.css";
 import { FormConfigs, formConfigs, SkillFormData } from "./formtypes";
 import { ModalForm } from "./components/ModalForm";
 import { RegularForm } from "./components/RegularForm";
-import { Skeleton } from "@/components/ui/skeleton";
+import RegularFormSkeleton from "./components/RegularFormSkeleton";
 
 interface SkillAttachment {
   id: number;
@@ -257,47 +257,11 @@ export function UnifiedForm({ type, isModal = false, isOpen, onClose, workspaceI
       setIsGeneratingPrompt(false);
     }
   };
-
   if (isLoading) {
     return (
-      <div className="font-unilever h-[var(--edit-content-height)] bg-[#F4FAFC] shadow-lg overflow-y-auto mt-2 rounded-xl w-full p-5">
-        <div className="space-y-4">
-          <Skeleton className="h-8 w-[250px]" /> {/* Back button & title */}
-          <div className="flex justify-between">
-            <Skeleton className="h-10 w-[220px]" /> {/* Title */}
-            <Skeleton className="h-10 w-[180px]" /> {/* Action buttons */}
-          </div>
-          
-          {/* Form fields */}
-          <Skeleton className="h-5 w-[100px] mt-6" /> {/* Label */}
-          <Skeleton className="h-10 w-full" /> {/* Input field */}
-          
-          <Skeleton className="h-5 w-[100px] mt-4" /> {/* Label */}
-          <Skeleton className="h-24 w-full" /> {/* Textarea */}
-          
-          <Skeleton className="h-5 w-[100px] mt-4" /> {/* Label */}
-          <Skeleton className="h-24 w-full" /> {/* Textarea */}
-          
-          {/* File uploaders */}
-          <div className="flex flex-row gap-4 mt-6">
-            <div className="flex-1">
-              <Skeleton className="h-5 w-[100px] mb-2" /> {/* Label */}
-              <Skeleton className="h-[120px] w-full" /> {/* Uploader */}
-            </div>
-            <div className="flex-1">
-              <Skeleton className="h-5 w-[100px] mb-2" /> {/* Label */}
-              <Skeleton className="h-[120px] w-full" /> {/* Uploader */}
-            </div>
-          </div>
-          
-          {/* Uploaded files section */}
-          <Skeleton className="h-5 w-[120px] mt-6" /> {/* Uploaded files label */}
-          <Skeleton className="h-[150px] w-full rounded-md" /> {/* Table */}
-        </div>
-      </div>
+      <RegularFormSkeleton />
     );
   }
-
   if (isModal) {
     return (
       <ModalForm
