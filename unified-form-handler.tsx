@@ -1,276 +1,285 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate, useParams, useLocation } from "react-router-dom";
-import { baseURL, HTTPMethod } from "@/@logic";
-import { useQueryClient } from "@tanstack/react-query";
-import { useForm } from "react-hook-form";
-import "@uppy/core/dist/style.css";
-import "@uppy/drag-drop/dist/style.css";
-import { FormConfigs, formConfigs, SkillFormData } from "./formtypes";
-import { ModalForm } from "./components/ModalForm";
-import { RegularForm } from "./components/RegularForm";
-import RegularFormSkeleton from "./components/RegularFormSkeleton";
+import { MessageInput } from "@/shared/MessageInput";
 import { useFetchHandler } from "@/@logic/getHandlers";
-import { useMutateHandler, Payload } from "@/@logic/mutateHandlers";
+import { useParams } from "react-router-dom";
+import { useWorkspaceStore, Workspace } from "@/@logic/workspaceStore";
+import { modelList } from "@/constant/models";
+import { rolePlay } from "@/constant/role-play";
+import { useMutateHandler } from "@/@logic/mutateHandlers";
+import { HTTPMethod } from "@/@logic";
+import { useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
+import DropdownSelect from "@/shared/chatdropDown";
+import ChatMessages from "./ChatMessages";
+import NewChatSuggestion from "./NewChatSuggestion";
+import ChatMessage from "./ChatMessageModel";
+import { useMsal } from '@azure/msal-react';
+import { getUserProfile } from '@/utils/getUserProfile';
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useNavigate } from "react-router-dom";
 
-interface SkillAttachment {
-  id: number;
-  name: string;
-  source_type: string;
-  path_url: string;
-  source_info: string;
-  uploaded_by_id: number;
-  uploaded_at: string;
-}
-
-interface SkillResponse {
+interface ChatResponse {
   data: {
-    id: number;
-    name: string;
-    description: string;
-    workspace_id: number;
-    system_prompt: string;
-    is_processed_for_rag: boolean;
-    processing_status: string;
-    logo_path: string;
-    created_by_id: number;
-    created_at: string;
-    updated_at: string;
-    attachments: SkillAttachment[];
+    chat_id: number;
+    user_message_id: number;
+    ai_message_id: number;
+    ai_response: string | string[];
   };
-  message: string;
 }
 
-interface FormProps {
-  type: keyof FormConfigs;
-  isModal?: boolean;
-  isOpen?: boolean;
-  onClose?: () => void;
-  workspaceId?: string;
-  userId?: string;
-}
-
-export function UnifiedForm({ type, isModal = false, isOpen, onClose, workspaceId, userId = "1" }: FormProps) {
-  const { id } = useParams();
-  const navigate = useNavigate();
-  const location = useLocation();
+function Chat() {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const queryClient = useQueryClient();
-  const [error, setError] = useState<string | null>(null);
-  const [item, setItem] = useState<any>(location.state?.[type] || null);
-  const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [skillData, setSkillData] = useState<SkillResponse["data"] | null>(null);
+  const { chatId } = useParams();
+  const [searchParams] = useSearchParams();
+  const workspaceName = searchParams.get("workspaceName");
+  const skillName = searchParams.get("skillName");
+  const workspaces = useWorkspaceStore((state) => state.workspaces);
+  const [selectedWorkspace, setSelectedWorkspace] = useState(workspaceName || ""); // Default to workspaceName from params
+  const [selectedSkill, setSelectedSkill] = useState(skillName || ""); // Default to skillName from params
+  const [models, setModels] = useState(modelList[0]);
+  const [selectedRole, setSelectedRole] = useState(rolePlay[0]);
+  const [isNewChat, setIsNewChat] = useState(true);
+  // const { accounts } = useMsal();
+  const navigate = useNavigate();
+  const [avatar, setAvatar] = useState<string>();
 
-  const config = formConfigs[type];
-  const formMethods = useForm({
-    defaultValues: { 
-      ...config.defaultValues, 
-      ...(type === 'skill' ? {
-        systemPrompt: "",
-        publicURL: "",
-        sharePointURL: "",
-      } : {}),
+  const { data: chat, isLoading } = useFetchHandler(
+    chatId ? `chats/?userId=1&chatId=${chatId}` : "", // Empty URL when chatId is undefined
+    chatId ? `chat-${chatId}` : "" // Empty key when chatId is undefined
+  );
+
+  // const userProfile = async () => {
+  //   if (accounts.length > 0) {
+  //     const userProfile = await getUserProfile(accounts[0]);
+  //     setAvatar(userProfile);
+  //   }
+  // }
+  // useEffect(() => {
+  //   userProfile();
+  // }, [accounts]);
+
+
+  const addChat = useMutateHandler({
+    endUrl: "chats/?userId=1",
+    method: HTTPMethod.POST,
+    onSuccess: (response: ChatResponse) => {
+      queryClient.invalidateQueries({ queryKey: ['recent'] });
+      navigate(`/chat/${response.data.chat_id}`);
+      setIsNewChat(false);
+
+      const botResponse: ChatMessage = {
+        id: response.data.ai_message_id,
+        message:Array.isArray(response.data.ai_response)
+        ? response.data.ai_response[0]
+        :response.data.ai_response ,
+        role: "MSB_Admin",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        chat_id: response.data.chat_id,
+      };
+      setMessages(prev => [...prev.filter(msg => !msg.isLoading), botResponse]);
     },
   });
 
-  const { setValue, watch } = formMethods;
-  const skillName = watch("name");
-  const skillDescription = watch("description");
-  const dataSourceType = watch("category");
-  const shouldShowFileUploader = type === 'skill' && dataSourceType === 'File upload';
-  const shouldShowSharePointInput = type === 'skill' && dataSourceType === 'Sharepoint URL';
-  const shouldShowPublicURLInput = type === 'skill' && dataSourceType === 'Public URL';
-
-  const { data: fetchedSkillData, isLoading: isFetchingSkill } = useFetchHandler(
-    type === 'skill' && id && !isModal ? `skills/${id}` : '',
-    'skillData'
-  );
-
-  useEffect(() => {
-    if (fetchedSkillData) {
-      setSkillData(fetchedSkillData);
-      setValue('name', fetchedSkillData.name);
-      setValue('description', fetchedSkillData.description);
-      setValue('systemPrompt', fetchedSkillData.system_prompt);
-      if (fetchedSkillData.attachments && fetchedSkillData.attachments.length > 0) {
-        if (fetchedSkillData.attachments[0].source_type === 'ADLS') {
-          setValue('category', 'File upload');
-        } else if (fetchedSkillData.attachments[0].source_type === 'sharePoint') {
-          setValue('category', 'Sharepoint URL');
-        } else if (fetchedSkillData.attachments[0].source_type === 'URL') {
-          setValue('category', 'Public URL');
-        }
-      }
-    }
-  }, [fetchedSkillData, setValue]);
-
-  useEffect(() => {
-    setIsLoading(isFetchingSkill);
-  }, [isFetchingSkill]);
-
-  useEffect(() => {
-    if (item) {
-      (Object.keys(config.defaultValues) as Array<keyof typeof config.defaultValues>).forEach((key) => {
-        setValue(key, item[key] || config.defaultValues[key]);
-      });
-    }
-  }, [item, setValue, config.defaultValues]);
-
-  const systemPromptMutation = useMutateHandler({
-    endUrl: 'skills/system-prompt',
+  const existingChatMutation = useMutateHandler({
+    endUrl: "chats/?userId=1",
     method: HTTPMethod.POST,
-    onSuccess: (data) => {
-      if (data && data.data) {
-        setValue('systemPrompt', data.data);
-      }
-    }
+    onSuccess: (response: ChatResponse) => {
+      const botResponse: ChatMessage = {
+        id: response.data.ai_message_id,
+        message:Array.isArray(response.data.ai_response)
+        ? response.data.ai_response[0]
+        :response.data.ai_response ,
+        role: "MSB_Admin",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        chat_id: Number(chatId),
+      };
+      setMessages(prev => [...prev.filter(msg => !msg.isLoading), botResponse]);
+    },
   });
 
-  const submitFormMutation = useMutateHandler({
-    endUrl: id 
-      ? `${config.apiEndpoints.update}?${type}Id=${id}${workspaceId ? `&workspaceId=${workspaceId}` : ''}&userId=${userId}`
-      : `${config.apiEndpoints.create}${workspaceId ? `?workspaceId=${workspaceId}` : ''}`,
-    method: HTTPMethod.POST,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["workspace"] });
-      if (isModal && onClose) {
-        onClose();
-      } else {
-        navigate("/workspace/my-workspace");
-      }
-    }
-  });
+  const onSendMessage = (messageToSend: string) => {
+    if (!messageToSend.trim()) return;
 
-  const onSubmit = async (data: typeof config.defaultValues) => {
-    try {
-      if (type === "skill") {
-        const formData = new FormData();
-        const skillData = data as SkillFormData;
-        formData.append("skillName", skillData.name);
-        formData.append("description", skillData.description);
-        formData.append("systemPrompt", skillData.systemPrompt || "");
-      
-        if (workspaceId) {
-          formData.append("workspaceId", workspaceId);
-        }
+    const newUserMessage: ChatMessage = {
+      id: Date.now(),
+      message: messageToSend,
+      role: "USER",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      chat_id: Number(chatId) || 0,
+    };
+    const loadingMessage: ChatMessage = {
+      id: Date.now()+1,
+      message: "",
+      role: "MSB_Admin",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      chat_id: Number(chatId) || 0,
+      isLoading:true,
+    };
+    setMessages(prev => [...prev, newUserMessage,loadingMessage]);
 
-        let dataSource = "";
-        if (dataSourceType === "File upload") {
-          dataSource = "ADLS";
-          const fileInputs = document.querySelectorAll('input[name="fileInput"]');
-          if (fileInputs && fileInputs.length > 0) {
-            const fileInput = fileInputs[0] as HTMLInputElement;
-            if (fileInput.files && fileInput.files.length > 0) {
-              for (let i = 0; i < fileInput.files.length; i++) {
-                formData.append("fileInput", fileInput.files[i]);
-              }
-            }
-          }
-        } else if (dataSourceType === "Sharepoint URL") {
-          dataSource = "sharePoint";
-          formData.append("sharePointURL", skillData.sharePointURL || "");
-        } else if (dataSourceType === "Public URL") {
-          dataSource = "URL";
-          formData.append("publicURL", skillData.publicURL || "");
-        }
-        
-        formData.append("dataSource", dataSource);
-        const logoInputs = document.querySelectorAll('input[name="logoFile"]');
-        if (logoInputs && logoInputs.length > 0) {
-          const logoInput = logoInputs[0] as HTMLInputElement;
-          if (logoInput.files && logoInput.files.length > 0) {
-            formData.append("logoFile", logoInput.files[0]);
-          }
-        }
-        const url = id 
-          ? `${baseURL}/skills/update?skillId=${id}&userId=${userId}${workspaceId ? `&workspaceId=${workspaceId}` : ''}`
-          : `${baseURL}/skills/create?userId=${userId}${workspaceId ? `&workspaceId=${workspaceId}` : ''}`;
-        
-        const response = await fetch(url, {
-          method: "POST",
-          body: formData,
-        });
-        
-        if (!response.ok) {
-          throw new Error(`Failed to ${id ? "update" : "create"} ${type}`);
-        }
-        
-        queryClient.invalidateQueries({ queryKey: ["workspace"] });
-        if (isModal && onClose) {
-          onClose();
-        } else {
-          navigate("/workspace/my-workspace");
-        }
-      } else {
-        const payload = {
-          ...data,
-          id: id || undefined,
-          workspaceId: workspaceId || undefined,
-        };
-        
-        submitFormMutation.mutate(payload as Payload);
-      }
-    } catch (error) {
-      setError(error instanceof Error ? error.message : `Failed to ${id ? "update" : "create"} ${type}`);
-    }
-  };
+    const skillId =
+      workspaces?.find(item => item.name === selectedWorkspace)
+        ?.skills?.find(skill => skill.name === selectedSkill)?.id || 0;
 
-  const generateSystemPrompt = async () => {
-    if (!skillName || !skillDescription) return;
-    setIsGeneratingPrompt(true);
-    
-    try {
-      systemPromptMutation.mutate({
-        name: skillName,
-        description: skillDescription
+    const payload = {
+      userMessage: messageToSend,
+      skillId,
+      isNewChat,
+    };
+
+    if (!chatId) {
+      addChat.mutate(payload);
+    } else {
+      existingChatMutation.mutate({
+        ...payload,
+        chatId: Number(chatId),
+        isNewChat: false,
       });
-    } catch (error) {
-      console.error('Error generating system prompt:', error);
-    } finally {
-      setIsGeneratingPrompt(false);
     }
+
+
   };
 
-  if (isLoading) {
-    return (
-      <RegularFormSkeleton />
+  function handleWorkspaceChange(value: string) {
+    setSelectedWorkspace(value);
+    setSelectedSkill(
+      workspaces
+        .filter((item: Workspace) => item.name === value)[0]
+        .skills.map((item) => item.name)[0]
     );
   }
-  if (isModal && !isOpen) return null;
-  if (!isModal && !item && !skillData && type !== 'skill') return null;
-  
-  if (isModal) {
-    return (
-      <ModalForm
-        isOpen={!!isOpen}
-        onClose={onClose || (() => {})}
-        type={type}
-        id={id}
-        config={config}
-        formMethods={formMethods}
-        onSubmit={onSubmit}
-        shouldShowFileUploader={shouldShowFileUploader}
-        shouldShowSharePointInput={shouldShowSharePointInput}
-        shouldShowPublicURLInput={shouldShowPublicURLInput}
-        isGeneratingPrompt={isGeneratingPrompt}
-        generateSystemPrompt={generateSystemPrompt}
-        skillName={skillName}
-        skillDescription={skillDescription}
-      />
-    );
-  }
+
+  const showWelcome = !chatId && messages.length === 0;
+
+  useEffect(() => {
+    if (chatId && chat) {
+      setSelectedWorkspace(chat?.workspace.name);
+      setSelectedSkill(chat?.skill.name);
+      setMessages(chat?.messages || []);
+      // setChatTitle(` ${chat?.chat.title}`);
+    } else if (!workspaceName && workspaces?.length > 0) {
+      setSelectedWorkspace(workspaces?.[0].name);
+      setSelectedSkill(workspaces?.[0].skills[0].name);
+      setMessages([]);
+      // setChatTitle("New Chat");
+    }
+    if (chatId) {
+      setIsNewChat(false);
+    }
+    else {
+      setIsNewChat(true);
+    }
+  }, [chatId, chat, workspaceName, workspaces.length]);
 
   return (
-    <RegularForm
-      type={type}
-      id={id}
-      config={config}
-      formMethods={formMethods}
-      onSubmit={onSubmit}
-      isGeneratingPrompt={isGeneratingPrompt}
-      generateSystemPrompt={generateSystemPrompt}
-      skillName={skillName}
-      skillDescription={skillDescription}
-      skillData={skillData}
-    />
+    <div
+      className="w-[100vw] font-unilever"
+      style={{ maxHeight: `calc(100vh - var(--navbar-height))` }}
+    >
+      {isLoading && chatId ? (
+        <div className="flex justify-center items-center h-full">
+          <p>Loading chat...</p>
+        </div>
+      ) : (
+        <div className="flex-1 flex flex-col">
+          <div className="flex items-center  mt-2 w-full">
+            <div className="mx-auto flex">
+              <Tooltip>
+                <TooltipTrigger>
+                  <DropdownSelect
+                    title='Select workspace'
+                    items={workspaces?.map((item) => item.name) || []}
+                    searchPlaceholder="Search"
+                    groupTitle="Recent Workspaces"
+                    defaultValue={selectedWorkspace}
+                    onValueChange={handleWorkspaceChange}
+                  />
+                </TooltipTrigger>
+                <TooltipContent side="bottom" sideOffset={4} disableArrow>
+                  <p>Workspace</p>
+                </TooltipContent>
+              </Tooltip>
+              <div className="flex px-2 text-gray-500">/</div>
+              <Tooltip>
+                <TooltipTrigger>
+                  <DropdownSelect
+                    title="Select Skill"
+                    items={
+                      workspaces?.find((item: Workspace) => item.name === selectedWorkspace)?.skills.map((item) => item.name) || []
+                    }
+                    searchPlaceholder="Search"
+                    groupTitle={`Skill for ${selectedWorkspace}`}
+                    defaultValue={selectedSkill}
+                    onValueChange={(value) => setSelectedSkill(value)}
+                  />
+                </TooltipTrigger>
+                <TooltipContent side="bottom" sideOffset={4} disableArrow>
+                  <p>Skill</p>
+                </TooltipContent>
+              </Tooltip>
+              <div className="flex px-2 text-gray-500">/</div>
+              <Tooltip>
+                <TooltipTrigger>
+                  <div className="text-[12px] font-medium bg-gradient-to-t from-[#1F36C7] to-[#697DFF] bg-clip-text text-transparent">{chatId ? chat?.chat.title : 'New Chat'}</div>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" sideOffset={4} disableArrow>
+                  <p>Chat</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            <div className="flex gap-2 md:flex-col lg:flex-row">
+              <Tooltip>
+                <TooltipTrigger>
+                  <DropdownSelect
+                    title="Select Role"
+                    items={rolePlay}
+                    searchPlaceholder="Search"
+                    groupTitle={`Role Play`}
+                    defaultValue={selectedRole}
+                    onValueChange={(value) => setSelectedRole(value)}
+                  />
+                </TooltipTrigger>
+                <TooltipContent side="bottom" sideOffset={4} disableArrow>
+                  <p>Persona</p>
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger>
+                  <DropdownSelect
+                    title="Select Model"
+                    items={modelList}
+                    searchPlaceholder="Search"
+                    groupTitle={`Model`}
+                    defaultValue={models}
+                    onValueChange={(value) => setModels(value)}
+                  />
+                </TooltipTrigger>
+                <TooltipContent side="bottom" sideOffset={4} disableArrow>
+                  <p>Model</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          </div>
+          {showWelcome ? (
+            <div className="flex justify-center items-center h-[calc(80vh-var(--navbar-height))] w-full">
+              <NewChatSuggestion name={'Steve'}  onSendMessage={onSendMessage} />
+            </div>) : (
+            <ChatMessages messages={messages} avatar={avatar} name={'Steve'} />
+          )}
+
+          <div className="fixed bottom-0 left-32 w-full pl-2  flex justify-center items-end z-50">
+            <MessageInput
+              onSendMessage={onSendMessage}
+            />
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
+export default Chat;
