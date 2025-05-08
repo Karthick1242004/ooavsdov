@@ -6,6 +6,31 @@ import { FormFieldWithLabel } from "./FormField";
 import { UseFormReturn } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 
+interface SkillAttachment {
+  id: number;
+  name: string;
+  source_type: string;
+  path_url: string;
+  source_info: string;
+  uploaded_by_id: number;
+  uploaded_at: string;
+}
+
+interface SkillData {
+  id: number;
+  name: string;
+  description: string;
+  workspace_id: number;
+  system_prompt: string;
+  is_processed_for_rag: boolean;
+  processing_status: string;
+  logo_path: string;
+  created_by_id: number;
+  created_at: string;
+  updated_at: string;
+  attachments: SkillAttachment[];
+}
+
 interface RegularFormProps {
   type: string;
   id?: string;
@@ -16,6 +41,7 @@ interface RegularFormProps {
   generateSystemPrompt: () => Promise<void>;
   skillName?: string;
   skillDescription?: string;
+  skillData?: SkillData | null;
 }
 
 export const RegularForm: React.FC<RegularFormProps> = ({
@@ -28,9 +54,37 @@ export const RegularForm: React.FC<RegularFormProps> = ({
   generateSystemPrompt,
   skillName,
   skillDescription,
+  skillData,
 }) => {
   const navigate = useNavigate();
   const { control, handleSubmit, formState: { errors } } = formMethods;
+  const showUploadedFiles = type === "skill" && id;
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear()}`;
+  };
+  const getFileType = (fileName: string) => {
+    const extension = fileName.split('.').pop()?.toLowerCase();
+    switch(extension) {
+      case 'pdf':
+        return 'PDF';
+      case 'doc':
+      case 'docx':
+        return 'Word';
+      case 'xls':
+      case 'xlsx':
+        return 'Excel';
+      case 'ppt':
+      case 'pptx':
+        return 'PowerPoint';
+      case 'txt':
+        return 'Text';
+      default:
+        return extension?.toUpperCase() || 'Unknown';
+    }
+  };
+  
+  const hasAttachments = skillData?.attachments && skillData.attachments.length > 0;
   
   return (
     <div className="font-unilever h-[var(--edit-content-height)] bg-[#F4FAFC] shadow-lg overflow-y-auto mt-2 rounded-xl w-full">
@@ -73,7 +127,7 @@ export const RegularForm: React.FC<RegularFormProps> = ({
             </div>
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-4">
             {type === 'skill' ? (
               <>
                 {config.fields
@@ -97,7 +151,7 @@ export const RegularForm: React.FC<RegularFormProps> = ({
                     />
                   ))
                 }
-              
+                
                 <div className="flex flex-row gap-4 mt-4">
                   {config.fields.filter(field => field.type === 'uploader').map((field) => (
                     <FormFieldWithLabel
@@ -112,6 +166,59 @@ export const RegularForm: React.FC<RegularFormProps> = ({
                     />
                   ))}
                 </div>
+                
+                {showUploadedFiles && (
+                  <div className="mt-6">
+                    <h2 className="text-xs font-unilever-medium text-gray-600 mb-2">Uploaded Files</h2>
+                    <div className="bg-white rounded-md shadow-sm overflow-hidden">
+                      {hasAttachments ? (
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full divide-y divide-gray-200">
+                            <thead className="bg-[#c9d0fe]">
+                              <tr>
+                                <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                                  Date
+                                </th>
+                                <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                                  Type
+                                </th>
+                                <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                                  Attachment
+                                </th>
+                                <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-200">
+                              {skillData?.attachments.map((file) => (
+                                <tr key={file.id} className="group bg-[#f6f8ff]">
+                                  <td className="px-4 py-2 whitespace-nowrap text-xs text-gray-600">
+                                    {formatDate(file.uploaded_at)}
+                                  </td>
+                                  <td className="px-4 py-2 whitespace-nowrap text-xs text-gray-600">
+                                    {getFileType(file.name)}
+                                  </td>
+                                  <td className="px-4 py-2 whitespace-nowrap text-xs">
+                                    <a href={file.path_url} className="text-blue-600 hover:underline">
+                                      {file.name}
+                                    </a>
+                                  </td>
+                                  <td className="px-4 py-3 whitespace-nowrap text-sm">
+                                    <Trash2 className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer" />
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <div className="p-6 text-center">
+                          <p className="text-sm text-gray-500">No files available</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </>
             ) : (
               config.fields.map((field) => (
