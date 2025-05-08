@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import { baseURL } from "@/@logic";
+import { baseURL, HTTPMethod } from "@/@logic";
 import { useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import "@uppy/core/dist/style.css";
@@ -9,6 +9,8 @@ import { FormConfigs, formConfigs, SkillFormData } from "./formtypes";
 import { ModalForm } from "./components/ModalForm";
 import { RegularForm } from "./components/RegularForm";
 import RegularFormSkeleton from "./components/RegularFormSkeleton";
+import { useFetchHandler } from "@/@logic/getHandlers";
+import { useMutateHandler, Payload } from "@/@logic/mutateHandlers";
 
 interface SkillAttachment {
   id: number;
@@ -78,48 +80,32 @@ export function UnifiedForm({ type, isModal = false, isOpen, onClose, workspaceI
   const shouldShowSharePointInput = type === 'skill' && dataSourceType === 'Sharepoint URL';
   const shouldShowPublicURLInput = type === 'skill' && dataSourceType === 'Public URL';
 
-  // Fetch skill data when editing a skill
+  const { data: fetchedSkillData, isLoading: isFetchingSkill } = useFetchHandler(
+    type === 'skill' && id && !isModal ? `skills/${id}` : '',
+    'skillData'
+  );
+
   useEffect(() => {
-    const fetchSkillData = async () => {
-      if (type === 'skill' && id && !isModal) {
-        try {
-          setIsLoading(true);
-          const response = await fetch(`${baseURL}/skills/${id}`);
-          
-          if (!response.ok) {
-            throw new Error('Failed to fetch skill data');
-          }
-          
-          const responseData: SkillResponse = await response.json();
-          setSkillData(responseData.data);
-          
-          // Populate form fields with the response data
-          setValue('name', responseData.data.name);
-          setValue('description', responseData.data.description);
-          setValue('systemPrompt', responseData.data.system_prompt);
-          
-          // For data source type, determine based on attachments
-          if (responseData.data.attachments && responseData.data.attachments.length > 0) {
-            if (responseData.data.attachments[0].source_type === 'ADLS') {
-              setValue('category', 'File upload');
-            } else if (responseData.data.attachments[0].source_type === 'sharePoint') {
-              setValue('category', 'Sharepoint URL');
-            } else if (responseData.data.attachments[0].source_type === 'URL') {
-              setValue('category', 'Public URL');
-            }
-          }
-          
-        } catch (error) {
-          console.error('Error fetching skill data:', error);
-          setError(error instanceof Error ? error.message : 'Failed to fetch skill data');
-        } finally {
-          setIsLoading(false);
+    if (fetchedSkillData) {
+      setSkillData(fetchedSkillData);
+      setValue('name', fetchedSkillData.name);
+      setValue('description', fetchedSkillData.description);
+      setValue('systemPrompt', fetchedSkillData.system_prompt);
+      if (fetchedSkillData.attachments && fetchedSkillData.attachments.length > 0) {
+        if (fetchedSkillData.attachments[0].source_type === 'ADLS') {
+          setValue('category', 'File upload');
+        } else if (fetchedSkillData.attachments[0].source_type === 'sharePoint') {
+          setValue('category', 'Sharepoint URL');
+        } else if (fetchedSkillData.attachments[0].source_type === 'URL') {
+          setValue('category', 'Public URL');
         }
       }
-    };
-    
-    fetchSkillData();
-  }, [id, type, isModal, setValue]);
+    }
+  }, [fetchedSkillData, setValue]);
+
+  useEffect(() => {
+    setIsLoading(isFetchingSkill);
+  }, [isFetchingSkill]);
 
   useEffect(() => {
     if (item) {
@@ -129,16 +115,34 @@ export function UnifiedForm({ type, isModal = false, isOpen, onClose, workspaceI
     }
   }, [item, setValue, config.defaultValues]);
 
+  const systemPromptMutation = useMutateHandler({
+    endUrl: 'skills/system-prompt',
+    method: HTTPMethod.POST,
+    onSuccess: (data) => {
+      if (data && data.data) {
+        setValue('systemPrompt', data.data);
+      }
+    }
+  });
+
+  const submitFormMutation = useMutateHandler({
+    endUrl: id 
+      ? `${config.apiEndpoints.update}?${type}Id=${id}${workspaceId ? `&workspaceId=${workspaceId}` : ''}&userId=${userId}`
+      : `${config.apiEndpoints.create}${workspaceId ? `?workspaceId=${workspaceId}` : ''}`,
+    method: HTTPMethod.POST,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["workspace"] });
+      if (isModal && onClose) {
+        onClose();
+      } else {
+        navigate("/workspace/my-workspace");
+      }
+    }
+  });
+
   const onSubmit = async (data: typeof config.defaultValues) => {
     try {
-      const endpoint = id ? config.apiEndpoints.update : config.apiEndpoints.create;
-      
       if (type === "skill") {
-        let url = `${baseURL}${endpoint}?userId=${userId}`;
-        if (workspaceId) {
-          url += `&workspaceId=${workspaceId}`;
-        }
-        
         const formData = new FormData();
         const skillData = data as SkillFormData;
         formData.append("skillName", skillData.name);
@@ -177,12 +181,9 @@ export function UnifiedForm({ type, isModal = false, isOpen, onClose, workspaceI
             formData.append("logoFile", logoInput.files[0]);
           }
         }
-        if (id) {
-          url = `${baseURL}/${config.apiEndpoints.update}?skillId=${id}&userId=${userId}`;
-          if (workspaceId) {
-            url += `&workspaceId=${workspaceId}`;
-          }
-        }
+        const url = id 
+          ? `${baseURL}/skills/update?skillId=${id}&userId=${userId}${workspaceId ? `&workspaceId=${workspaceId}` : ''}`
+          : `${baseURL}/skills/create?userId=${userId}${workspaceId ? `&workspaceId=${workspaceId}` : ''}`;
         
         const response = await fetch(url, {
           method: "POST",
@@ -192,76 +193,51 @@ export function UnifiedForm({ type, isModal = false, isOpen, onClose, workspaceI
         if (!response.ok) {
           throw new Error(`Failed to ${id ? "update" : "create"} ${type}`);
         }
+        
+        queryClient.invalidateQueries({ queryKey: ["workspace"] });
+        if (isModal && onClose) {
+          onClose();
+        } else {
+          navigate("/workspace/my-workspace");
+        }
       } else {
-        const url = id ? `${baseURL}/${endpoint}?${type}Id=${id}` : `${baseURL}/${endpoint}`;
         const payload = {
           ...data,
           id: id || undefined,
           workspaceId: workspaceId || undefined,
         };
-        const response = await fetch(url, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(payload),
-        });
         
-        if (!response.ok) {
-          throw new Error(`Failed to ${id ? "update" : "create"} ${type}`);
-        }
-      }
-
-      queryClient.invalidateQueries({ queryKey: ["workspace"] });
-      if (isModal && onClose) {
-        onClose();
-      } else {
-        navigate("/workspace/my-workspace");
+        submitFormMutation.mutate(payload as Payload);
       }
     } catch (error) {
       setError(error instanceof Error ? error.message : `Failed to ${id ? "update" : "create"} ${type}`);
     }
   };
 
-  if (isModal && !isOpen) return null;
-  if (!isModal && !item && !skillData && type !== 'skill') return null;
-  
   const generateSystemPrompt = async () => {
+    if (!skillName || !skillDescription) return;
+    setIsGeneratingPrompt(true);
+    
     try {
-      if (!skillName || !skillDescription) return;
-      setIsGeneratingPrompt(true);
-      const response = await fetch(`${baseURL}skills/system-prompt`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: skillName,
-          description: skillDescription
-        }),
+      systemPromptMutation.mutate({
+        name: skillName,
+        description: skillDescription
       });
-      
-      if (!response.ok) {
-        throw new Error('Failed to generate system prompt');
-      }
-      
-      const responseData = await response.json();
-      if (responseData && responseData.data) {
-        setValue('systemPrompt', responseData.data);
-      } else {
-        console.error('Unexpected API response format:', responseData);
-      }
     } catch (error) {
       console.error('Error generating system prompt:', error);
     } finally {
       setIsGeneratingPrompt(false);
     }
   };
+
   if (isLoading) {
     return (
       <RegularFormSkeleton />
     );
   }
+  if (isModal && !isOpen) return null;
+  if (!isModal && !item && !skillData && type !== 'skill') return null;
+  
   if (isModal) {
     return (
       <ModalForm
