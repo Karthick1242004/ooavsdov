@@ -1,303 +1,179 @@
-import React, { useState, useEffect } from "react";
-import { MessageInput } from "@/shared/MessageInput";
-import { useFetchHandler } from "@/@logic/getHandlers";
-import { useParams } from "react-router-dom";
-import { useWorkspaceStore, Workspace } from "@/@logic/workspaceStore";
-import { modelList } from "@/constant/models";
-import { rolePlay } from "@/constant/role-play";
-import { useMutateHandler } from "@/@logic/mutateHandlers";
-import { HTTPMethod } from "@/@logic";
-import { useQueryClient } from "@tanstack/react-query";
-import { useSearchParams } from "react-router-dom";
-import DropdownSelect from "@/shared/chatdropDown";
-import ChatMessages from "./ChatMessages";
-import NewChatSuggestion from "./NewChatSuggestion";
-import ChatMessage from "./ChatMessageModel";
-import { useMsal } from '@azure/msal-react';
-import { getUserProfile } from '@/utils/getUserProfile';
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { useNavigate } from "react-router-dom";
+import React, { useState } from 'react';
+import { ChartLine, PencilLine, UserRound } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Skill as StoreSkill } from '@/@logic/workspaceStore';
+import { useFetchHandler } from '@/@logic/getHandlers';
+import { useNavigation } from '@/hooks/navigationHook';
+import Dot from '@/shared/dot/dot';
 
-interface ChatResponse {
-  data: {
-    chat_id: number;
-    user_message_id: number;
-    ai_message_id: number;
-    ai_response: string | string[];
-  };
+type Skill = StoreSkill;
+
+interface WorkspaceSkillCardProps {
+  skill: Skill;
+  workspaceName: string;
 }
 
-function Chat() {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const queryClient = useQueryClient();
-  const { chatId } = useParams();
-  const [searchParams] = useSearchParams();
-  const workspaceName = searchParams.get("workspace-name");
-  const skillName = searchParams.get("skill-name");
-  const skillIdFromUrl = searchParams.get("skill-id");
-  const workspaces = useWorkspaceStore((state) => state.workspaces);
-  const [selectedWorkspace, setSelectedWorkspace] = useState(workspaceName || ""); // Default to workspaceName from params
-  const [selectedSkill, setSelectedSkill] = useState(skillName || ""); // Default to skillName from params
-  const [selectedSkillId, setSelectedSkillId] = useState<number | null>(skillIdFromUrl ? Number(skillIdFromUrl) : null);
-  const [models, setModels] = useState(modelList[0]);
-  const [selectedRole, setSelectedRole] = useState(rolePlay[0]);
-  const [isNewChat, setIsNewChat] = useState(true);
-  // const { accounts } = useMsal();
-  const navigate = useNavigate();
-  const [avatar, setAvatar] = useState<string>();
+function WorkspaceSkillCard({ skill, workspaceName }: WorkspaceSkillCardProps) {
+  const { navigateTo } = useNavigation();
+  const [localSkill, setLocalSkill] = useState<Skill>(skill);
+  const [shouldFetch, setShouldFetch] = useState(false);
+  const isProcessSuccessful = localSkill.processing_status === "Completed" && localSkill.is_processed_for_rag;
+  const isProcessFailed = localSkill.processing_status === "Failed";
+  const isProcessing = localSkill.processing_status === "Pending" || localSkill.processing_status === "Inprogress";
 
-  const { data: chat, isLoading } = useFetchHandler(
-    chatId ? `chats/?userId=1&chatId=${chatId}` : "", // Empty URL when chatId is undefined
-    chatId ? `chat-${chatId}` : "" // Empty key when chatId is undefined
-  );
-
-  // const userProfile = async () => {
-  //   if (accounts.length > 0) {
-  //     const userProfile = await getUserProfile(accounts[0]);
-  //     setAvatar(userProfile);
-  //   }
-  // }
-  // useEffect(() => {
-  //   userProfile();
-  // }, [accounts]);
-
-
-  const addChat = useMutateHandler({
-    endUrl: "chats/?userId=1",
-    method: HTTPMethod.POST,
-    onSuccess: (response: ChatResponse) => {
-      queryClient.invalidateQueries({ queryKey: ['recent'] });
-      navigate(`/chat/${response.data.chat_id}`);
-      setIsNewChat(false);
-
-      const botResponse: ChatMessage = {
-        id: response.data.ai_message_id,
-        message:Array.isArray(response.data.ai_response)
-        ? response.data.ai_response[0]
-        :response.data.ai_response ,
-        role: "MSB_Admin",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        chat_id: response.data.chat_id,
-      };
-      setMessages(prev => [...prev.filter(msg => !msg.isLoading), botResponse]);
-    },
-  });
-
-  const existingChatMutation = useMutateHandler({
-    endUrl: "chats/?userId=1",
-    method: HTTPMethod.POST,
-    onSuccess: (response: ChatResponse) => {
-      const botResponse: ChatMessage = {
-        id: response.data.ai_message_id,
-        message:Array.isArray(response.data.ai_response)
-        ? response.data.ai_response[0]
-        :response.data.ai_response ,
-        role: "MSB_Admin",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        chat_id: Number(chatId),
-      };
-      setMessages(prev => [...prev.filter(msg => !msg.isLoading), botResponse]);
-    },
-  });
-
-  const onSendMessage = (messageToSend: string) => {
-    if (!messageToSend.trim()) return;
-
-    const newUserMessage: ChatMessage = {
-      id: Date.now(),
-      message: messageToSend,
-      role: "USER",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      chat_id: Number(chatId) || 0,
-    };
-    const loadingMessage: ChatMessage = {
-      id: Date.now()+1,
-      message: "",
-      role: "MSB_Admin",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      chat_id: Number(chatId) || 0,
-      isLoading:true,
-    };
-    setMessages(prev => [...prev, newUserMessage,loadingMessage]);
-
-    const skillId = selectedSkillId || 0;
-        
-    console.log("Skill id", skillId);
-
-    const payload = {
-      userMessage: messageToSend,
-      skillId,
-      isNewChat,
-    };
-
-    if (!chatId) {
-      addChat.mutate(payload);
-    } else {
-      existingChatMutation.mutate({
-        ...payload,
-        chatId: Number(chatId),
-        isNewChat: false,
-      });
-    }
-
-
+  const handleEditClick = (e: React.MouseEvent, skill: Skill) => {
+    e.preventDefault();
+    const workspaceId = skill.workspace?.toString() || "";
+    navigateTo({
+      path: `/workspace/skill/edit/${skill.id}`,
+      state: { skill, type: "skill", workspaceId }
+    });
   };
 
-  function handleWorkspaceChange(value: string) {
-    setSelectedWorkspace(value);
-    const firstSkill = workspaces
-      .filter((item: Workspace) => item.name === value)[0]
-      .skills[0];
-      
-    setSelectedSkill(firstSkill.name);
-    setSelectedSkillId(Number(firstSkill.id));
-  }
+  const { data, isFetching: isPending, refetch } = useFetchHandler(
+    shouldFetch ? `skills/${localSkill.id}/rag-status` : '',
+    `skill-status-${localSkill.id}`
+  );
 
-  function handleSkillChange(value: string) {
-    setSelectedSkill(value);
-    const skill = workspaces
-      .find((item: Workspace) => item.name === selectedWorkspace)
-      ?.skills.find(skill => skill.name === value);
-      
-    if (skill) {
-      setSelectedSkillId(Number(skill.id));
+  React.useEffect(() => {
+    if (data) {
+      setLocalSkill({
+        ...localSkill,
+        processing_status: data.processing_status,
+        is_processed_for_rag: data.is_processed_for_rag
+      });
+      setShouldFetch(false);
     }
-  }
+  }, [data]);
 
-  const showWelcome = !chatId && messages.length === 0;
+  const handleCheckStatus = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setShouldFetch(true);
+    refetch();
+  };
 
-  useEffect(() => {
-    if (chatId && chat) {
-      setSelectedWorkspace(chat?.workspace.name);
-      setSelectedSkill(chat?.skill.name);
-      setSelectedSkillId(Number(chat?.skill.id));
-      setMessages(chat?.messages || []);
-      // setChatTitle(` ${chat?.chat.title}`);
-    } else if (!workspaceName && workspaces?.length > 0) {
-      setSelectedWorkspace(workspaces?.[0].name);
-      setSelectedSkill(workspaces?.[0].skills[0].name);
-      setSelectedSkillId(Number(workspaces?.[0].skills[0].id));
-      setMessages([]);
-      // setChatTitle("New Chat");
-    } else if (skillIdFromUrl) {
-      setSelectedSkillId(Number(skillIdFromUrl));
-    }
-    if (chatId) {
-      setIsNewChat(false);
-    }
-    else {
-      setIsNewChat(true);
-    }
-  }, [chatId, chat, workspaceName, workspaces.length, skillIdFromUrl]);
-
-  return (
-    <div
-      className="w-[100vw] font-unilever"
-      style={{ maxHeight: `calc(100vh - var(--navbar-height))` }}
-    >
-      {isLoading && chatId ? (
-        <div className="flex justify-center items-center h-full">
-          <p>Loading chat...</p>
+  const CardContent = () => (
+    <div className="relative">
+      {isPending && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60 rounded-lg border border-blue-200">
+          <span className="text-xs font-semibold text-[var(--workspace-color-highlight)] px-4 py-1 rounded-lg border border-[var(--workspace-color-highlight)] bg-white shadow">
+            Checking skill status...
+          </span>
         </div>
-      ) : (
-        <div className="flex-1 flex flex-col">
-          <div className="flex items-center  mt-2 w-full">
-            <div className="mx-auto flex">
-              <Tooltip>
-                <TooltipTrigger>
-                  <DropdownSelect
-                    title='Select workspace'
-                    items={workspaces?.map((item) => item.name) || []}
-                    searchPlaceholder="Search"
-                    groupTitle="Recent Workspaces"
-                    defaultValue={selectedWorkspace}
-                    onValueChange={handleWorkspaceChange}
-                  />
-                </TooltipTrigger>
-                <TooltipContent side="bottom" sideOffset={4} disableArrow>
-                  <p>Workspace</p>
-                </TooltipContent>
-              </Tooltip>
-              <div className="flex px-2 text-gray-500">/</div>
-              <Tooltip>
-                <TooltipTrigger>
-                  <DropdownSelect
-                    title="Select Skill"
-                    items={
-                      workspaces?.find((item: Workspace) => item.name === selectedWorkspace)?.skills.map((item) => item.name) || []
-                    }
-                    searchPlaceholder="Search"
-                    groupTitle={`Skill for ${selectedWorkspace}`}
-                    defaultValue={selectedSkill}
-                    onValueChange={handleSkillChange}
-                  />
-                </TooltipTrigger>
-                <TooltipContent side="bottom" sideOffset={4} disableArrow>
-                  <p>Skill</p>
-                </TooltipContent>
-              </Tooltip>
-              <div className="flex px-2 text-gray-500">/</div>
-              <Tooltip>
-                <TooltipTrigger>
-                  <div className="text-[12px] font-medium bg-gradient-to-t from-[#1F36C7] to-[#697DFF] bg-clip-text text-transparent">{chatId ? chat?.chat.title : 'New Chat'}</div>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" sideOffset={4} disableArrow>
-                  <p>Chat</p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-            <div className="flex gap-2 md:flex-col lg:flex-row">
-              <Tooltip>
-                <TooltipTrigger>
-                  <DropdownSelect
-                    title="Select Role"
-                    items={rolePlay}
-                    searchPlaceholder="Search"
-                    groupTitle={`Role Play`}
-                    defaultValue={selectedRole}
-                    onValueChange={(value) => setSelectedRole(value)}
-                  />
-                </TooltipTrigger>
-                <TooltipContent side="bottom" sideOffset={4} disableArrow>
-                  <p>Persona</p>
-                </TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger>
-                  <DropdownSelect
-                    title="Select Model"
-                    items={modelList}
-                    searchPlaceholder="Search"
-                    groupTitle={`Model`}
-                    defaultValue={models}
-                    onValueChange={(value) => setModels(value)}
-                  />
-                </TooltipTrigger>
-                <TooltipContent side="bottom" sideOffset={4} disableArrow>
-                  <p>Model</p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-          </div>
-          {showWelcome ? (
-            <div className="flex justify-center items-center h-[calc(80vh-var(--navbar-height))] w-full">
-              <NewChatSuggestion name={'Steve'}  onSendMessage={onSendMessage} />
-            </div>) : (
-            <ChatMessages messages={messages} avatar={avatar} name={'Steve'} />
-          )}
+      )}
+      <div className={isPending ? "blur-xs opacity-100 pointer-events-none select-none" : ""}>
+        <div
+          className={`group relative transition-all min-h-[120px] duration-300 border ${isProcessFailed
+              ? "bg-red-50 border-red-200"
+              : "bg-[#F4F8FF] border-[#CBE0FF]"
+            } rounded-lg p-4`}
+        >
+          <div className="flex flex-row gap-2 items-center justify-between">
+            <div className="flex flex-col w-full">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <h3
+                    className={`font-semibold text-sm font-unilever-medium ${isProcessFailed
+                        ? "text-black"
+                        : "text-[var(--workspace-color-highlight)]"
+                      }`}
+                  >
+                    {localSkill.name}
+                  </h3>
+                </div>
+              </div>
+              {isProcessSuccessful ?
+                <>
+                <div className="flex items-center gap-2 mb-3">
+                  <div
+                    className="flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-[var(--workspace-color-bg-light)] text-[var(--workspace-color-highlight)]">
+                    <UserRound size={14} />
+                    Clara
+                  </div>
+                  <div
+                    className="flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-[var(--workspace-color-bg-light)] text-[var(--workspace-color-highlight)]">
+                    <Dot bgcolor='bg-[var(--workspace-color-highlight)]' />
+                    15 Skills
+                  </div>
+                </div></>:null }
+              <p className="text-[12px] text-gray-500">
+                {localSkill.description && localSkill.description.length > 120
+                  ? `${localSkill.description.substring(0, 120)}...`
+                  : localSkill.description}
+              </p>
 
-          <div className="fixed bottom-0 left-32 w-full pl-2  flex justify-center items-end z-50">
-            <MessageInput
-              onSendMessage={onSendMessage}
+              {isProcessSuccessful && (
+                <>
+                  <button
+                    onClick={(e) => handleEditClick(e, localSkill)}
+                    className="absolute top-1 right-8 p-1 text-xs text-[var(--workspace-color-highlight)]"
+                  >
+                    <span className="inline-block opacity-0 border-l border-t border-b border-gray-200 rounded-l-sm bg-white p-1 translate-x-2 transition-all duration-300 ease-out group-hover:opacity-100 group-hover:translate-x-0">
+                      <PencilLine size={16} />
+                    </span>
+                  </button>
+                  <p className="absolute bottom-0 right-0 text-xs">
+                    <span className="inline-block py-[1px] opacity-0 px-2 text-[10px] rounded-tl-xl rounded-br-lg bg-[var(--workspace-color-highlight)] text-white translate-x-2 transition-all duration-300 ease-out group-hover:opacity-100 group-hover:translate-x-0">
+                      Start a chat with this skill
+                    </span>
+                  </p>
+                  <button className="absolute top-1 right-2 p-1 text-xs text-[var(--workspace-color-highlight)]">
+                    <span className="inline-block opacity-0 border-r border-t border-b border-gray-200 rounded-r-sm bg-white p-1 translate-x-2 transition-all duration-300 ease-out group-hover:opacity-100 group-hover:translate-x-0">
+                      <ChartLine size={16} />
+                    </span>
+                  </button>
+                </>
+              )}
+
+              {!isProcessSuccessful && (
+                <div className="mt-2 mr-10">
+                  {isProcessFailed ? (
+                    <>
+                      <button className="text-xs cursor-pointer">
+                        <span className="inline-block py-1 px-2 text-[10px] rounded-sm bg-red-400 text-white">
+                          Delete Skill
+                        </span>
+                      </button>
+                      <p className="absolute bottom-0 right-0 text-xs">
+                        <span className="inline-block py-[1px] opacity-0 px-2 text-[10px] rounded-tl-xl rounded-br-lg bg-red-400 text-white translate-x-2 transition-all duration-300 ease-out group-hover:opacity-100 group-hover:translate-x-0">
+                          Skill creation failed
+                        </span>
+                      </p>
+                    </>
+                  ) : isProcessing ? (
+                    <button className="text-xs cursor-pointer" onClick={handleCheckStatus}>
+                      <span className="inline-block py-1 px-2 text-[10px] rounded-sm bg-[var(--workspace-color-highlight)] text-white">
+                        Check skill status
+                      </span>
+                    </button>
+                  ) : (
+                    <button className="text-xs cursor-pointer">
+                      <span className="inline-block py-1 px-2 text-[10px] rounded-sm bg-[var(--workspace-color-highlight)] text-white">
+                        Check skill status
+                      </span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+            <img
+              src={localSkill.logo || "https://img.freepik.com/premium-vector/lorem-ipsum-logo-design-colorful-gradient_779267-18.jpg?w=1380"}
+              className="w-1/4 h-1/4 rounded-md"
+              alt="logo"
             />
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
+
+  return isProcessSuccessful ? (
+    <Link key={localSkill.id} to={`/chat?workspace-name=${workspaceName}&skill-name=${localSkill.name}&skill-id=${localSkill.id}`}>
+      <CardContent />
+    </Link>
+  ) : (
+    <CardContent />
+  );
 }
-export default Chat;
+
+export default WorkspaceSkillCard;
