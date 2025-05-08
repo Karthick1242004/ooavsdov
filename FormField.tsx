@@ -173,7 +173,7 @@ export const FormFieldWithLabel: React.FC<FormFieldRendererProps & { className?:
     <div className={className}>
       <Label
         htmlFor={field.name}
-        className="block text-xs font-unilever text-gray-600 mb-1"
+        className="block text-xs font-unilever-medium text-gray-600 mb-1"
       >
         {field.label}
       </Label>
