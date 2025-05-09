@@ -1,246 +1,296 @@
-"use client";
+import React, { useEffect, useRef, useState } from "react";
+import { Sparkle, Copy, Pencil, ThumbsUp, ThumbsDown, RotateCcw, Check } from "lucide-react";
+import ChatMessage from "./ChatMessageModel";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { Button } from "@/components/ui/button";
 
-import React, { useEffect, useState } from "react";
-import {
-  LineChartIcon as ChartLine,
-  PencilLine,
-  UserRound,
-} from "lucide-react";
-import { Link } from "react-router-dom";
-import {
-  type Skill as StoreSkill,
-  useWorkspaceStore,
-} from "@/@logic/workspaceStore";
-import { useNavigation } from "@/hooks/navigationHook";
-import Dot from "@/shared/dot/dot";
-import type { ProcessingStatus } from "../workspace-details";
-import { baseURL } from "@/@logic";
-
-type Skill = StoreSkill;
-
-interface SkillStatusResponse {
-  processing_status: string;
-  is_processed_for_rag: boolean;
+interface ChatMessagesProps {
+    messages: ChatMessage[];
+    avatar?: string;
+    name?: string;
 }
 
-interface WorkspaceSkillCardProps {
-  skill: Skill;
-  workspaceName: string;
-}
+function ChatMessages({ messages, avatar, name }: ChatMessagesProps) {
+    const [copiedId, setCopiedId] = useState<number | null>(null);
+    const [editingId, setEditingId] = useState<number | null>(null);
+    const [editedText, setEditedText] = useState("");
+    const thinkingText = "Thinking...";
 
-function WorkspaceSkillCard({
-  skill: initialSkill,
-  workspaceName,
-}: WorkspaceSkillCardProps) {
-  const { navigateTo } = useNavigation();
-  const [shouldFetch, setShouldFetch] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [forceUpdate, setForceUpdate] = useState(0);
-  const updateSkillStatus = useWorkspaceStore(
-    (state) => state.updateSkillStatus
-  );
-  const workspaces = useWorkspaceStore((state) => state.workspaces);
-  const latestSkill = React.useMemo(() => {
-    for (const workspace of workspaces) {
-      const foundSkill = workspace.skills.find((s) => s.id === initialSkill.id);
-      if (foundSkill) {
-        return foundSkill;
-      }
-    }
-    console.log("Using initial skill (not found in store):", initialSkill);
-    return initialSkill;
-  }, [workspaces, initialSkill, forceUpdate]);
 
-  const skill = latestSkill;
-  const currentSkillStatus = useWorkspaceStore((state) => {
-    for (const workspace of state.workspaces) {
-      const skill = workspace.skills.find((s) => s.id === initialSkill.id);
-      if (skill) {
-        return skill.processing_status;
-      }
-    }
-    return initialSkill.processing_status;
-  });
 
-  useEffect(() => {
-    console.log("Detected skill status change in store:", currentSkillStatus);
-    setForceUpdate((prev) => prev + 1);
-  }, [currentSkillStatus]);
+    const endOfMessagesRef = useRef<HTMLDivElement | null>(null);
 
-  const isProcessSuccessful = currentSkillStatus === "Completed";
-  const isProcessFailed = currentSkillStatus === "Failed";
-  const isProcessing =
-    currentSkillStatus === "Pending" || currentSkillStatus === "Inprogress";
-  const handleEditClick = (e: React.MouseEvent, skill: Skill) => {
-    e.preventDefault();
-    const workspaceId = skill.workspace?.toString() || "";
-    navigateTo({
-      path: `/workspace/skill/edit/${skill.id}`,
-      state: { skill, type: "skill", workspaceId },
-    });
-  };
-
-  const handleCheckStatus = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    fetch(`${baseURL}/skills/${skill.id}/rag-status`)
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error("Network response was not ok");
+    const handleCopy = async (text: string, id: number) => {
+        try {
+            await navigator.clipboard.writeText(text);
+            setCopiedId(id);
+            setTimeout(() => setCopiedId(null), 1500); // Reset after 1.5s
+        } catch (err) {
+            console.error("Failed to copy text:", err);
         }
-        return response.json();
-      })
-      .then((data) => {
-        if (data && typeof data.processing_status === "string") {
-          updateSkillStatus(
-            skill.id,
-            data.processing_status as ProcessingStatus,
-            !!data.is_processed_for_rag
-          );
-          setForceUpdate((prev) => prev + 1);
+    };
+
+    const handleSave = (id: number) => {
+        // setMessages(prev =>
+        //   prev.map(msg =>
+        //     msg.id === id ? { ...msg, message: editedText } : msg
+        //   )
+        // );
+        setEditingId(null);
+        setEditedText("");
+    };
+
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    // Auto-adjust height on `editedText` change
+    useEffect(() => {
+        const textarea = textareaRef.current;
+        if (textarea) {
+            textarea.style.height = "auto";
+            textarea.style.height = `${Math.min(textarea.scrollHeight, 150)}px`;
         }
-      })
-      .catch((err) => console.error("Error fetching status:", err))
-      .finally(() => {
-        setIsLoading(false);
-        setShouldFetch(false);
-      });
-  };
+    }, [editedText]);
 
-  const CardContent = () => (
-    <div className="relative h-full flex flex-col">
-      {isLoading && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60 rounded-lg border border-blue-200">
-          <span className="text-xs font-semibold text-[var(--workspace-color-highlight)] px-4 py-1 rounded-lg border border-[var(--workspace-color-highlight)] bg-white shadow">
-            Checking skill status...
-          </span>
-        </div>
-      )}
-      <div
-        className={`relative h-full ${
-          isLoading ? "blur-xs opacity-100 pointer-events-none select-none" : ""
-        }`}
-      >
-        <div
-          className={`group relative h-full flex flex-col transition-all duration-300 border ${
-            isProcessFailed
-              ? "bg-red-50 border-red-200"
-              : "bg-[#F4F8FF] border-[#CBE0FF]"
-          } rounded-lg p-4`}
-        >
-          <div className="flex flex-row-reverse items-center justify-between h-full">
-            <div className="flex items-center justify-center">
-              <img
-                src="https://img.freepik.com/free-vector/butterfly-colorful-logo-template_361591-1587.jpg?ga=GA1.1.1951523002.1738084030&semt=ais_hybrid&w=740"
-                className="w-20 h-20 rounded-md"
-                alt="logo"
-              />
-            </div>
-            
-            <div className="flex flex-col justify-between h-full flex-1">
-              <div className="flex flex-col">
-                <div className="flex items-center justify-between mb-2">
-                  <h3
-                    className={`font-semibold text-xs font-unilever-medium ${
-                      isProcessFailed
-                        ? "text-black"
-                        : "text-[var(--workspace-color-highlight)]"
-                    }`}
-                  >
-                    {skill.name && skill.name.length > 22
-                      ? `${skill.name.substring(0, 20)}...`
-                      : skill.name}
-                  </h3>
-                </div>
-                
-                {isProcessSuccessful ? (
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] bg-[var(--workspace-color-bg-light)] text-[var(--workspace-color-highlight)]">
-                      <UserRound size={14} />
-                      Clara
+    useEffect(() => {
+        endOfMessagesRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [messages]);
+    return (
+        <div className="flex-1 overflow-y-scroll max-h-[calc(85vh-8.3rem)] pl-1 scrollbar-hide  w-[55.8vw] mx-auto mt-4">
+            <div className="flex flex-col gap-4 mx-auto">
+                {messages.map((msg) => (
+                    <div
+                        key={msg.id}
+                        className={`flex flex-1 gap-2 align-middle ${msg.role.toLowerCase() === "user" ? "justify-end" : "justify-start"
+                            }`}
+                    >
+                        {(msg.role.toLowerCase() === "msb_admin" || msg.role.toLowerCase() === "ai" || msg.role.toLowerCase() === "bot") && (
+                            <div className="rounded-full self-start text-white bg-[#1F36C7] p-2">
+                                <Sparkle size={20} />
+
+                            </div>
+                        )}
+                        <div className="relative group max-w-[89.5%]">
+                            {editingId === msg.id ? (
+                                <div
+                                    className={`flex flex-col w-[42vw] gap-2 overflow-hidden bg-[#EDF0FF] border border-[#d0d8ff] rounded-lg transition-all duration-500 ease-in-out
+                                     ${editingId === msg.id ? "p-3 opacity-100" : "p-0 opacity-0"}
+                                   `}
+                                >
+                                    <textarea
+                                        ref={textareaRef}
+                                        value={editedText}
+                                        onChange={(e) => setEditedText(e.target.value)}
+                                        className="w-full text-xs p-2 border-none rounded-lg bg-[#EDF0FF] resize-none overflow-hidden focus:outline-none "
+                                        rows={1}
+                                        style={{
+                                            maxHeight: "150px",
+                                        }}
+                                    />
+                                    <div className="flex gap-2 justify-end ">
+                                        <Button
+                                            className="text-xs py-1 px-2 border border-[#D5D5D5] cursor-pointer"
+                                            onClick={() => {
+                                                setEditingId(null);
+                                                setEditedText("");
+                                            }}
+                                        >
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            className="text-xs p-0 px-2  bg-[#005EEE] text-white cursor-pointer"
+                                            onClick={() => handleSave(msg.id)}
+                                        >
+                                            Send
+                                        </Button>
+                                    </div>
+                                </div>
+                            ) : msg.isLoading ? (
+                                <>
+                                    <div
+                                        className="relative inline-block align-middle"
+                                        style={{
+                                            padding: 0,
+                                            margin: 0,
+                                        }}
+                                    >
+                                        {/* SVG background */}
+                                        <svg
+                                            aria-hidden
+                                            viewBox="0 0 100 32"
+                                            width="100%"
+                                            height="100%"
+                                            style={{
+                                                position: "absolute",
+                                                top: 0,
+                                                left: 0,
+                                                width: "100%",
+                                                height: "100%",
+                                                zIndex: 0,
+                                                pointerEvents: "none",
+                                            }}
+                                            preserveAspectRatio="none"
+                                        >
+                                            <rect x="0" y="0" width="100" height="32" rx="10" fill="transparent" />
+                                        </svg>
+
+                                        {/* Text above SVG */}
+                                        <div className="relative z-10 p-0 px-2 py-2">
+                                            <div className="flex  text-black text-xl tracking-[0.05rem] font-light ">
+                                                {thinkingText.split("").map((letter, i) => (
+                                                    <span
+                                                        key={i}
+                                                        className="animate-fade text-[12px] font-unilever"
+                                                        style={{
+                                                            animationDelay: `${i * 0.1}s`,
+                                                        }}
+                                                    >
+                                                        {letter}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <style>{`
+                                                @keyframes fade {
+                                                0% { opacity: 1; }
+                                                100% { opacity: 0.2; }
+                                                }
+                                                .animate-fade {
+                                                animation: fade 0.6s infinite alternate;
+                                                display: inline-block;
+                                                }
+                                         `}</style>
+                                    </div></>
+                            ) : (
+                                <div
+                                    className={`border text-[12px] rounded-lg py-2 px-3 whitespace-pre-wrap break-words text-justify
+                                     ${msg.role.toLowerCase() === "user" ? "bg-[#e2e6ff] border-[#AFBAFF]" : "bg-[#ffffff] border-[#AFBAFF]"}
+                                     `}
+                                >
+                                    {msg.message}
+                                </div>
+                            )}
+
+                            {msg.role.toLowerCase() === "user" &&
+                                <div className="flex gap-2 mr-1 mt-2 justify-end">
+                                    {copiedId ? <Check
+                                        size={12}
+                                        className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer text-gray-500"
+                                        color="black"
+                                    /> :
+                                        <Tooltip>
+                                            <TooltipTrigger>
+                                                <Copy
+                                                    size={12}
+                                                    className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer text-gray-500"
+                                                    color="black"
+                                                    onClick={() => handleCopy(msg.message, msg.id)}
+                                                />
+                                            </TooltipTrigger>
+                                            <TooltipContent side="bottom" sideOffset={4} className="bg-white border-none">
+                                                <p>Copy</p>
+                                            </TooltipContent>
+                                        </Tooltip>
+                                    }
+                                    <Tooltip>
+                                        <TooltipTrigger>
+                                            <Pencil
+                                                size={12}
+                                                className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer text-gray-500"
+                                                color="black"
+                                                onClick={() => {
+                                                    setEditingId(msg.id);
+                                                    setEditedText(msg.message);
+                                                }}
+
+                                            />
+                                        </TooltipTrigger>
+                                        <TooltipContent side="bottom" sideOffset={4} className="bg-white border-none">
+                                            <p>Edit</p>
+                                        </TooltipContent>
+                                    </Tooltip>
+                                </div>
+                            }
+                            {(msg.role.toLowerCase() === "msb_admin" || msg.role.toLowerCase() === "ai" || msg.role.toLowerCase() === "bot") &&
+                                <div className="flex gap-2 mr-1 mt-2 ">
+                                    {copiedId ? <Check
+                                        size={12}
+                                        className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer text-gray-500"
+                                        color="black"
+                                    /> :
+                                        <Tooltip>
+                                            <TooltipTrigger>
+                                                <Copy
+                                                    size={12}
+                                                    className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer text-gray-500"
+                                                    color="black"
+                                                    onClick={() => handleCopy(msg.message, msg.id)}
+                                                />
+                                            </TooltipTrigger>
+                                            <TooltipContent side="bottom" sideOffset={4} className="bg-white border-none">
+                                                <p>Copy</p>
+                                            </TooltipContent>
+                                        </Tooltip>
+                                    }
+                                    <Tooltip>
+                                        <TooltipTrigger>
+                                            <ThumbsUp
+                                                size={12}
+                                                className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer text-gray-500"
+                                                color="black"
+                                            />
+                                        </TooltipTrigger>
+                                        <TooltipContent side="bottom" sideOffset={4} className="bg-white border-none">
+                                            <p>Good Response</p>
+                                        </TooltipContent>
+                                    </Tooltip>
+                                    <Tooltip>
+                                        <TooltipTrigger>
+                                            <ThumbsDown
+                                                size={12}
+                                                className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer text-gray-500"
+                                                color="black"
+                                            />
+                                        </TooltipTrigger>
+                                        <TooltipContent side="bottom" sideOffset={4} className="bg-white border-none">
+                                            <p>Bad Response</p>
+                                        </TooltipContent>
+                                    </Tooltip>
+
+                                    <Tooltip>
+                                        <TooltipTrigger>
+                                            <RotateCcw
+                                                size={12}
+                                                className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer text-gray-500"
+                                                color="black"
+                                            />
+                                        </TooltipTrigger>
+                                        <TooltipContent side="bottom" sideOffset={4} className="bg-white border-none">
+                                            <p>Regenerate Response</p>
+                                        </TooltipContent>
+                                    </Tooltip>
+
+                                </div>
+                            }
+                        </div>
+
+                        {msg.role.toLowerCase() === "user" && (
+                            avatar ? (
+                                <img
+                                    src={avatar}
+                                    alt="User"
+                                    className="w-[35px] h-[35px] rounded-full"
+                                />
+                            ) : (
+                                <div className="w-[35px] h-[35px] flex items-center justify-center bg-gray-300 text-white font-bold rounded-full">
+                                    {name?.charAt(0).toUpperCase()}
+                                </div>
+                            )
+                        )}
                     </div>
-                    <div className="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] bg-[var(--workspace-color-bg-light)] text-[var(--workspace-color-highlight)]">
-                      <Dot bgcolor="bg-[var(--workspace-color-highlight)]" />
-                      15 Chats
-                    </div>
-                  </div>
-                ) : null}
-                
-                <p className="text-[11px] text-gray-500">
-                  {skill.description && skill.description.length > 100
-                    ? `${skill.description.substring(0, 76)}...`
-                    : skill.description}
-                </p>
-              </div>
-              
-              <div className="mt-2">
-                {isProcessSuccessful ? (
-                  <p className="text-xs absolute bottom-0 right-0">
-                    <span className="inline-block py-[1px] opacity-0 px-2 text-[10px] rounded-tl-xl rounded-br-lg bg-[var(--workspace-color-highlight)] text-white translate-x-2 transition-all duration-300 ease-out group-hover:opacity-100 group-hover:translate-x-0">
-                      Start a chat with this skill
-                    </span>
-                  </p>
-                ) : (
-                  <div>
-                    {isProcessFailed ? (
-                      <button className="text-xs cursor-pointer">
-                        <span className="inline-block py-[2px] pb-[3px] px-2 text-[10px] rounded-sm bg-red-400 text-white">
-                          Delete Skill
-                        </span>
-                      </button>
-                    ) : (
-                      <button
-                        className="text-xs mt-1 cursor-pointer"
-                        onClick={handleCheckStatus}
-                      >
-                        <span className="inline-block py-[4px] px-2 text-[10px] rounded-sm bg-[var(--workspace-color-highlight)] text-white">
-                          Check skill status
-                        </span>
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
+                ))}
             </div>
-          </div>
-
-          {isProcessSuccessful && (
-            <>
-              <button
-                onClick={(e) => handleEditClick(e, skill)}
-                className="absolute top-1 right-8 p-1 text-xs text-[var(--workspace-color-highlight)]"
-              >
-                <span className="inline-block opacity-0 border-l border-t border-b border-gray-200 rounded-l-sm bg-white p-1 translate-x-2 transition-all duration-300 ease-out group-hover:opacity-100 group-hover:translate-x-0">
-                  <PencilLine size={16} />
-                </span>
-              </button>
-              <button className="absolute top-1 right-2 p-1 text-xs text-[var(--workspace-color-highlight)]">
-                <span className="inline-block opacity-0 border-r border-t border-b border-gray-200 rounded-r-sm bg-white p-1 translate-x-2 transition-all duration-300 ease-out group-hover:opacity-100 group-hover:translate-x-0">
-                  <ChartLine size={16} />
-                </span>
-              </button>
-            </>
-          )}
+            <div ref={endOfMessagesRef} />
         </div>
-      </div>
-    </div>
-  );
-
-  const cardWrapper = isProcessSuccessful ? (
-    <Link
-      key={skill.id}
-      to={`/chat?workspace-name=${workspaceName}&skill-name=${skill.name}&skill-id=${skill.id}`}
-      className="block h-full"
-    >
-      <CardContent />
-    </Link>
-  ) : (
-    <div className="h-full">
-      <CardContent />
-    </div>
-  );
-
-  return <div className="h-full">{cardWrapper}</div>;
+    );
 }
-
-export default WorkspaceSkillCard;
+export default ChatMessages;
