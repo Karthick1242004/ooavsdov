@@ -3,6 +3,8 @@ import { Sparkle, Copy, Pencil, ThumbsUp, ThumbsDown, RotateCcw, Check } from "l
 import ChatMessage from "./ChatMessageModel";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Button } from "@/components/ui/button";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface ChatMessagesProps {
     messages: ChatMessage[];
@@ -166,7 +168,41 @@ function ChatMessages({ messages, avatar, name }: ChatMessagesProps) {
                                      ${msg.role.toLowerCase() === "user" ? "bg-[#e2e6ff] border-[#AFBAFF]" : "bg-[#ffffff] border-[#AFBAFF]"}
                                      `}
                                 >
-                                    {msg.message}
+                                    {msg.role.toLowerCase() === "user" ? (
+                                        msg.message
+                                    ) : (
+                                        <Markdown
+                                            remarkPlugins={[remarkGfm]}
+                                            components={{
+                                                h1: ({node, ...props}) => <h1 className="text-lg font-bold my-0" {...props} />,
+                                                h2: ({node, ...props}) => <h2 className="text-base font-bold my-0" {...props} />,
+                                                h3: ({node, ...props}) => <h3 className="text-sm font-bold my-0" {...props} />,
+                                                strong: ({node, ...props}) => <strong className="font-bold" {...props} />,
+                                                em: ({node, ...props}) => <em className="italic" {...props} />,
+                                                ul: ({node, ...props}) => <ul className="list-disc pl-4 !my-0" {...props} />,
+                                                ol: ({node, ...props}) => <ol className="list-decimal pl-4 my-0" {...props} />,
+                                                li: ({node, ...props}) => <li className="my-0 " {...props} />,
+                                                a: ({node, ...props}) => <a className="text-blue-600 underline" target="_blank" rel="noopener noreferrer" {...props} />,
+                                                p: ({node, ...props}) => <p className="my-2" {...props} />,
+                                                blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-gray-300 pl-2 italic my-0" {...props} />,
+                                                table: ({node, ...props}) => <table className="border-collapse border border-gray-300 my-0 w-full" {...props} />,
+                                                thead: ({node, ...props}) => <thead className="bg-gray-100" {...props} />,
+                                                tbody: ({node, ...props}) => <tbody {...props} />,
+                                                tr: ({node, ...props}) => <tr className="border-b border-gray-300" {...props} />,
+                                                th: ({node, ...props}) => <th className="border border-gray-300 px-2 py-1 text-left" {...props} />,
+                                                td: ({node, ...props}) => <td className="border border-gray-300 px-2 py-1" {...props} />,
+                                                code: ({node, inline, ...props}: {node?: any, inline?: boolean, [key: string]: any}) => 
+                                                    inline ? (
+                                                        <code className="bg-gray-100 px-1 py-0.5 rounded" {...props} />
+                                                    ) : (
+                                                        <code className="block bg-gray-100 p-2 rounded my-0 overflow-x-auto text-[10px]" {...props} />
+                                                    ),
+                                                pre: ({node, ...props}) => <pre className="bg-gray-100 px-2 rounded my-0 overflow-x-auto" {...props} />
+                                            }}
+                                        >
+                                            {msg.message}
+                                        </Markdown>
+                                    )}
                                 </div>
                             )}
 
